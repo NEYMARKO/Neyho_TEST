@@ -1,5 +1,7 @@
+import sys
 import json
-
+import eywa
+import asyncio
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -9,7 +11,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 from enum import Enum
 import time
 import re
-import datetime
+
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 driver_wait_time = 5
 
@@ -62,11 +66,57 @@ def parse_data_to_json(cells_text_array):
             cells_text_array[i] = int(cleaned)
         data[topics[i - 1]] = cleaned
     data[topics[-1]] = time.time()
-    return {cells_text_array[0] : data}
-def main():
+    return data
 
-    data_dict = {}
-    temp_dict = {}
+async def station_exists(name):
+    result = eywa.graphql("""
+    {
+        searchStation(name: {_eq: $name})
+        {
+            name
+        }
+    }
+    """, name)
+    await result
+    if (result["data"]["station"]["name"]):
+        return True
+    return False
+async def import_measures(data):
+    return await eywa.graphql("""
+    {
+        mutation($measurements:[MeasurementInput])
+        {
+            syncMeasurementsList(measure:$measures)
+            {
+                wind_direction
+                wind_velocity
+                air_temperature
+                relative_moisture
+                air_pressure
+                air_tendency",
+                weather_state
+                time
+            }
+        }
+    }
+    """, data)
+async def import_station(name):
+    return await eywa.graphql("""
+    {
+        mutation($station: StationInput)
+        {
+            syncStation(station:$station)
+            {
+                name
+            }
+        }
+    }
+    """, name)
+async def main():
+    eywa.open_pipe()
+
+    data_array = []
+    # stations_dict = {}
     driver = setup_driver()
 
     driver.get("https://meteo.hr/naslovnica_aktpod.php?tab=aktpod")
@@ -85,10 +135,15 @@ def main():
         cells = row.find_elements(By.TAG_NAME, "td")
         cells_text = [cell.text for cell in cells]
         # print(cells_text)
-        data_dict.update(parse_data_to_json(cells_text))
-    print(json.dumps(data_dict, ensure_ascii=False))
+        if (await station_exists(cells_text[0]) == False):
+            import_station(cells_text[0])
+        data_array.append(parse_data_to_json(cells_text))
+    print(data_array)
+    # print(json.dumps(data_dict, ensure_ascii=False))
+    await import_measures(json.dumps(data_array, ensure_ascii=False))
     driver.quit()
+    eywa.exit()
     return
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
