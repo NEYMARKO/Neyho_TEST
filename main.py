@@ -69,18 +69,21 @@ def parse_data_to_json(cells_text_array):
     return data
 
 async def station_exists(name):
-    result = eywa.graphql("""
+    print("IN STATION CHECK")
+    result = await eywa.graphql("""
     {
-        searchStation(name: {_eq: $name})
+        query($name: String)
         {
-            name
+            searchStation(name: {_eq: $name})
+            {
+                name
+            }
         }
     }
-    """, name)
-    await result
-    if (result["data"]["station"]["name"]):
-        return True
-    return False
+    """, {"name": name})
+
+    print("AFTER WAITING")
+    return bool(result.get("data", {}).get("station", {}).get("name"))
 async def import_measures(data):
     return await eywa.graphql("""
     {
@@ -99,7 +102,7 @@ async def import_measures(data):
             }
         }
     }
-    """, data)
+    """, {"data": data})
 async def import_station(name):
     return await eywa.graphql("""
     {
@@ -111,7 +114,7 @@ async def import_station(name):
             }
         }
     }
-    """, name)
+    """, {"name": name})
 async def main():
     eywa.open_pipe()
 
@@ -131,13 +134,16 @@ async def main():
     table = driver.find_element(By.XPATH, '//table[@class="fd-c-table1 table--aktualni-podaci sortable"]')
     table_body = table.find_element(By.XPATH, "./tbody")
     rows = table_body.find_elements(By.TAG_NAME, "tr")
+    print("GOING IN LOOP")
     for row in rows:
         cells = row.find_elements(By.TAG_NAME, "td")
         cells_text = [cell.text for cell in cells]
         # print(cells_text)
-        if (await station_exists(cells_text[0]) == False):
-            import_station(cells_text[0])
+        print("BEFORE CHECKING FOR STATION")
+        if await station_exists(cells_text[0]) == False:
+            await import_station(cells_text[0])
         data_array.append(parse_data_to_json(cells_text))
+        print("ROW DONE")
     print(data_array)
     # print(json.dumps(data_dict, ensure_ascii=False))
     await import_measures(json.dumps(data_array, ensure_ascii=False))
