@@ -75,6 +75,13 @@ def parse_data_to_json(cells_text_array):
     data[topics[-1]] = datetime.datetime.utcfromtimestamp(time.time()).strftime('%Y-%m-%dT%H:%M:%SZ')
     return data
 
+def extract_station_euuid_from_response(result):
+    # print(f"EUUID:{result.get('data', {}).get('searchStation', {})}")
+    if (result.get('data', {}).get('searchStation', {})):
+        return result.get('data', {}).get('searchStation', {}).get('euuid', {})
+
+    return None
+
 async def station_exists(name):
     result = await eywa.graphql("""
     query($name: String!)
@@ -88,21 +95,21 @@ async def station_exists(name):
     # print(f"RESULT: {result}")
     # print(result.get("data", {}).get("searchStation", {}))
     return {"name": name} in result.get("data", {}).get("searchStation", {})
-async def get_id(name):
+async def get_station_id(name):
     result = await eywa.graphql("""
     query($name: String!)
     {
         searchStation(name: {_eq:$name})
         {
             euuid
-            name
         }
     }
     """, {"name": name})
-    print(result)
+    print(f"GETTER RESULT: {result}")
     if (result.get('data', {}).get('searchStation', {})):
-        print(f"EUUID: {result.get('data', {}).get('searchStation', {})[0].get('euuid', {})}, \
-        NAME: {result.get('data', {}).get('searchStation', {})[0].get('name', {})}")
+        return result.get('data', {}).get('searchStation', {})[0].get('euuid', {})
+    # return extract_station_euuid_from_response(result)
+    return None
 
 async def import_measures(data):
     result = await eywa.graphql("""
@@ -111,25 +118,34 @@ async def import_measures(data):
     {
         syncMeasurmentList(data:$data)
         {
-            wind_direction
+            euuid
         }
     }
     
     """, {"data": data})
-    print(result)
+    # print(result)
+    euuids = []
+    result_list = result.get('data', {}).get('syncMeasurmentList', {})
+    for euuid in result_list:
+        euuids.append(euuid.get('euuid', {}))
+    return euuids
 async def import_station(name):
-
-    print("GOT TO INSERTION")
-    return await eywa.graphql("""
+    # print("GOT TO INSERTION")
+    result = await eywa.graphql("""
     mutation($station: StationInput)
     {
         syncStation(data:$station)
         {
-            name
+            euuid
         }
     }
 
     """, {"station": {"name": name}})
+    print(f"INSERTION RESULT:{result}")
+    # return extract_station_euuid_from_response(result)
+    if (result.get('data', {}).get('searchStation', {})):
+        return result.get('data', {}).get('searchStation', {}).get('euuid', {})
+    return None
 
 async def link_measurements():
     return await eywa.graphql("""
@@ -145,7 +161,9 @@ async def main():
     eywa.open_pipe()
 
     data_array = []
-    # stations_dict = {}
+
+    measurements_euuids = []
+    stations_euuids = []
 
     driver = setup_driver()
 
@@ -166,16 +184,21 @@ async def main():
         cells_text = [cell.text for cell in cells]
         # print(cells_text)
         # await get_id(cells_text[0])
-        if await station_exists(cells_text[0]) == False:
-            await import_station(cells_text[0])
+        id = await get_station_id(cells_text[0])
+        # if await station_exists(cells_text[0]) == False:
+        if not id:
+            id = await import_station(cells_text[0])
             print(f"STATION {cells_text[0]} SHOULD GET ADDED")
         else:
             print(f"SKIP ADD FOR {cells_text[0]}")
+        stations_euuids.append(id)
         data_array.append(parse_data_to_json(cells_text))
         # print("ROW DONE")
-    print(data_array)
+    # print(data_array)
     # print(json.dumps(data_dict, ensure_ascii=False))
-    await import_measures(data_array)
+    print(f"STATION EUUIDS:{stations_euuids}")
+    measurements_euuids = await import_measures(data_array)
+    print(f"MEASUREMENT EUUIDS: {measurements_euuids}")
     driver.quit()
     eywa.exit()
     return
