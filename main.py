@@ -1,5 +1,6 @@
 import sys
-import json
+import io
+import os
 import eywa
 import asyncio
 from selenium import webdriver
@@ -11,6 +12,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from enum import Enum
 import time
 import re
+
+if os.name == 'nt':
+    os.system('chcp 65001') #set utf-8 in windows terminal
+
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 driver_wait_time = 5
 
@@ -75,8 +82,9 @@ async def station_exists(name):
         }
     }
     """)
-    print(f"RESULT: {result}".encode('utf-8', errors='replace').decode('utf-8'))
-    return name in result.get("data", {}).get("searchStation", {})
+    # print(f"RESULT: {result}")
+    print(result.get("data", {}).get("searchStation", {}))
+    return {"name": name} in result.get("data", {}).get("searchStation", {})
 async def import_measures(data):
     return await eywa.graphql("""
     {
@@ -133,8 +141,10 @@ async def main():
         cells_text = [cell.text for cell in cells]
         # print(cells_text)
         if await station_exists(cells_text[0]) == False:
-            # await import_station(cells_text[0])
-            print("STATION SHOULD GET ADDED")
+            await import_station(cells_text[0])
+            print(f"STATION {cells_text[0]} SHOULD GET ADDED")
+        else:
+            print(f"SKIP ADD FOR {cells_text[0]}")
         data_array.append(parse_data_to_json(cells_text))
         # print("ROW DONE")
     # print(data_array)
