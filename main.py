@@ -12,6 +12,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from enum import Enum
 import time
+import datetime
 import re
 
 if os.name == 'nt':
@@ -66,12 +67,12 @@ def parse_data_to_json(cells_text_array):
         if (not cleaned or cleaned == '-'):
             continue
         elif (types[i] == Type.FLOAT):
-            print(f"{cleaned} will be float")
+            # print(f"{cleaned} will be float")
             cleaned = float(cleaned.replace('\u2212', '-'))
         elif (types[i] == Type.INT):
             cleaned = int(cleaned)
         data[topics[i - 1]] = cleaned
-    data[topics[-1]] = time.time()
+    data[topics[-1]] = datetime.datetime.utcfromtimestamp(time.time()).strftime('%Y-%m-%dT%H:%M:%SZ')
     return data
 
 async def station_exists(name):
@@ -174,7 +175,7 @@ async def main():
         # print("ROW DONE")
     print(data_array)
     # print(json.dumps(data_dict, ensure_ascii=False))
-    # await import_measures(data_array)
+    await import_measures(data_array)
     driver.quit()
     eywa.exit()
     return
