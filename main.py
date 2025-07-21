@@ -1,3 +1,4 @@
+import json
 import sys
 import io
 import os
@@ -65,9 +66,10 @@ def parse_data_to_json(cells_text_array):
         if (not cleaned or cleaned == '-'):
             continue
         elif (types[i] == Type.FLOAT):
-            cells_text_array[i] = float(cleaned.replace('\u2212', '-'))
+            print(f"{cleaned} will be float")
+            cleaned = float(cleaned.replace('\u2212', '-'))
         elif (types[i] == Type.INT):
-            cells_text_array[i] = int(cleaned)
+            cleaned = int(cleaned)
         data[topics[i - 1]] = cleaned
     data[topics[-1]] = time.time()
     return data
@@ -83,27 +85,37 @@ async def station_exists(name):
     }
     """)
     # print(f"RESULT: {result}")
-    print(result.get("data", {}).get("searchStation", {}))
+    # print(result.get("data", {}).get("searchStation", {}))
     return {"name": name} in result.get("data", {}).get("searchStation", {})
-async def import_measures(data):
-    return await eywa.graphql("""
+async def get_id(name):
+    result = await eywa.graphql("""
+    query($name: String!)
     {
-        mutation($measurements:[MeasurementInput])
+        searchStation(name: {_eq:$name})
         {
-            syncMeasurementsList(measure:$measures)
-            {
-                wind_direction
-                wind_velocity
-                air_temperature
-                relative_moisture
-                air_pressure
-                air_tendency",
-                weather_state
-                time
-            }
+            euuid
+            name
         }
     }
+    """, {"name": name})
+    print(result)
+    if (result.get('data', {}).get('searchStation', {})):
+        print(f"EUUID: {result.get('data', {}).get('searchStation', {})[0].get('euuid', {})}, \
+        NAME: {result.get('data', {}).get('searchStation', {})[0].get('name', {})}")
+
+async def import_measures(data):
+    result = await eywa.graphql("""
+    
+    mutation($data:[MeasurmentInput])
+    {
+        syncMeasurmentList(data:$data)
+        {
+            wind_direction
+        }
+    }
+    
     """, {"data": data})
+    print(result)
 async def import_station(name):
 
     print("GOT TO INSERTION")
@@ -117,11 +129,23 @@ async def import_station(name):
     }
 
     """, {"station": {"name": name}})
+
+async def link_measurements():
+    return await eywa.graphql("""
+    mutation(stations:[StationInput])
+    {
+        syncStationList(data:$measurements)
+        {
+            name
+        }
+    }
+    """, {"measurements" : {""}})
 async def main():
     eywa.open_pipe()
 
     data_array = []
     # stations_dict = {}
+
     driver = setup_driver()
 
     driver.get("https://meteo.hr/naslovnica_aktpod.php?tab=aktpod")
@@ -140,6 +164,7 @@ async def main():
         cells = row.find_elements(By.TAG_NAME, "td")
         cells_text = [cell.text for cell in cells]
         # print(cells_text)
+        # await get_id(cells_text[0])
         if await station_exists(cells_text[0]) == False:
             await import_station(cells_text[0])
             print(f"STATION {cells_text[0]} SHOULD GET ADDED")
@@ -147,9 +172,9 @@ async def main():
             print(f"SKIP ADD FOR {cells_text[0]}")
         data_array.append(parse_data_to_json(cells_text))
         # print("ROW DONE")
-    # print(data_array)
+    print(data_array)
     # print(json.dumps(data_dict, ensure_ascii=False))
-    # await import_measures(json.dumps(data_array, ensure_ascii=False))
+    # await import_measures(data_array)
     driver.quit()
     eywa.exit()
     return
