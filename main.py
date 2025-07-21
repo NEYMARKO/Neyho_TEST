@@ -12,9 +12,6 @@ from enum import Enum
 import time
 import re
 
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 driver_wait_time = 5
 
 class Type(Enum):
@@ -69,21 +66,17 @@ def parse_data_to_json(cells_text_array):
     return data
 
 async def station_exists(name):
-    print("IN STATION CHECK")
     result = await eywa.graphql("""
+    query($name: String!)
     {
-        query($name: String)
+        searchStation
         {
-            searchStation(name: {_eq: $name})
-            {
-                name
-            }
+            name
         }
     }
-    """, {"name": name})
-
-    print("AFTER WAITING")
-    return bool(result.get("data", {}).get("station", {}).get("name"))
+    """)
+    print(f"RESULT: {result}".encode('utf-8', errors='replace').decode('utf-8'))
+    return name in result.get("data", {}).get("searchStation", {})
 async def import_measures(data):
     return await eywa.graphql("""
     {
@@ -104,17 +97,18 @@ async def import_measures(data):
     }
     """, {"data": data})
 async def import_station(name):
+
+    print("GOT TO INSERTION")
     return await eywa.graphql("""
+    mutation($station: StationInput)
     {
-        mutation($station: StationInput)
+        syncStation(data:$station)
         {
-            syncStation(station:$station)
-            {
-                name
-            }
+            name
         }
     }
-    """, {"name": name})
+
+    """, {"station": {"name": name}})
 async def main():
     eywa.open_pipe()
 
@@ -134,19 +128,18 @@ async def main():
     table = driver.find_element(By.XPATH, '//table[@class="fd-c-table1 table--aktualni-podaci sortable"]')
     table_body = table.find_element(By.XPATH, "./tbody")
     rows = table_body.find_elements(By.TAG_NAME, "tr")
-    print("GOING IN LOOP")
     for row in rows:
         cells = row.find_elements(By.TAG_NAME, "td")
         cells_text = [cell.text for cell in cells]
         # print(cells_text)
-        print("BEFORE CHECKING FOR STATION")
         if await station_exists(cells_text[0]) == False:
-            await import_station(cells_text[0])
+            # await import_station(cells_text[0])
+            print("STATION SHOULD GET ADDED")
         data_array.append(parse_data_to_json(cells_text))
-        print("ROW DONE")
-    print(data_array)
+        # print("ROW DONE")
+    # print(data_array)
     # print(json.dumps(data_dict, ensure_ascii=False))
-    await import_measures(json.dumps(data_array, ensure_ascii=False))
+    # await import_measures(json.dumps(data_array, ensure_ascii=False))
     driver.quit()
     eywa.exit()
     return
