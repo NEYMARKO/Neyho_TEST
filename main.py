@@ -170,19 +170,27 @@ async def main():
         wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
     except:
         print("PAGE NOT LOADED SUCESSFULLY")
+        
     table = driver.find_element(By.XPATH, '//table[@class="fd-c-table1 table--aktualni-podaci sortable"]')
     table_body = table.find_element(By.XPATH, "./tbody")
     rows = table_body.find_elements(By.TAG_NAME, "tr")
 
-    # for row in rows:
-    #     cells = row.find_elements(By.TAG_NAME, "td")
-    #     cells_text = [cell.text for cell in cells]
-    #     if await station_exists(cells_text[0]) == False:
-    #         print(f"STATION {cells_text[0]} SHOULD GET ADDED")
-    #     else:
-    #         print(f"SKIP ADD FOR {cells_text[0]}")
-    #     data_array.append(parse_data_to_json(cells_text))
-    # await import_measures(data_array)
+    for row in rows:
+        cells = row.find_elements(By.TAG_NAME, "td")
+        cells_text = [driver.execute_script("""
+                    let clone = arguments[0].cloneNode(true);
+                    const tagsToRemove = ['SUP'];
+                    tagsToRemove.forEach(tag => {
+                        clone.querySelectorAll(tag).forEach(e => e.remove());
+                    });
+                    return clone.textContent.trim();
+                """, cell) for cell in cells]
+        if await station_exists(cells_text[0]) == False:
+            print(f"STATION {cells_text[0]} SHOULD GET ADDED")
+        else:
+            print(f"SKIP ADD FOR {cells_text[0]}")
+        data_array.append(parse_data_to_json(cells_text))
+    await import_measures(data_array)
 
     ##DELETING ALL STATIONS
     # all_station_euuids = await fetch_all_stations()
@@ -192,6 +200,7 @@ async def main():
     # all_measurement_euuids = await fetch_all_measurements()
     # await delete_all_measurements(all_measurement_euuids.get("data", {}).get("searchMeasurment", {}))
     # print(result.get("data", {}).get("searchMeasurment", {}))
+
     driver.quit()
     eywa.exit()
     return
