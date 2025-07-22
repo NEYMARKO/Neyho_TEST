@@ -99,7 +99,7 @@ async def import_measures(data):
         }
     }
     
-    """, {"data": data})
+    """, {"measurements": data})
 
 async def import_station(name):
     return await eywa.graphql("""
@@ -140,7 +140,7 @@ async def main():
         else:
             print(f"SKIP ADD FOR {cells_text[0]}")
         data_array.append(parse_data_to_json(cells_text))
-    # await import_measures(data_array)
+    await import_measures(data_array)
     driver.quit()
     eywa.exit()
     return
