@@ -113,6 +113,48 @@ async def import_station(name):
 
     """, {"station": {"name": name}})
 
+async def fetch_all_measurements():
+    return await eywa.graphql("""
+    {
+        searchMeasurment
+        {
+            euuid
+        }
+    }
+    """)
+
+async def delete_all_measurements(measurements_list):
+    for element in measurements_list:
+        euuid = element.get("euuid", {})
+        await eywa.graphql("""
+        mutation($euuid:UUID)
+        {
+            deleteMeasurment(euuid:$euuid)
+        }
+        """, {"euuid": euuid})
+    print("ALL VALUES DELETED")
+
+async def fetch_all_stations():
+    return await eywa.graphql("""
+    {
+        searchStation
+        {
+            euuid
+        }
+    }
+    """)
+
+async def delete_all_stations(stations_list):
+    for element in stations_list:
+        euuid = element.get("euuid", {})
+        await eywa.graphql("""
+        mutation($euuid: UUID)
+        {
+            deleteStation(euuid:$euuid)
+        }
+        """, {"euuid": euuid})
+
+
 async def main():
     eywa.open_pipe()
 
@@ -132,15 +174,24 @@ async def main():
     table_body = table.find_element(By.XPATH, "./tbody")
     rows = table_body.find_elements(By.TAG_NAME, "tr")
 
-    for row in rows:
-        cells = row.find_elements(By.TAG_NAME, "td")
-        cells_text = [cell.text for cell in cells]
-        if await station_exists(cells_text[0]) == False:
-            print(f"STATION {cells_text[0]} SHOULD GET ADDED")
-        else:
-            print(f"SKIP ADD FOR {cells_text[0]}")
-        data_array.append(parse_data_to_json(cells_text))
-    await import_measures(data_array)
+    # for row in rows:
+    #     cells = row.find_elements(By.TAG_NAME, "td")
+    #     cells_text = [cell.text for cell in cells]
+    #     if await station_exists(cells_text[0]) == False:
+    #         print(f"STATION {cells_text[0]} SHOULD GET ADDED")
+    #     else:
+    #         print(f"SKIP ADD FOR {cells_text[0]}")
+    #     data_array.append(parse_data_to_json(cells_text))
+    # await import_measures(data_array)
+
+    ##DELETING ALL STATIONS
+    # all_station_euuids = await fetch_all_stations()
+    # await delete_all_stations(all_station_euuids.get("data", {}).get("searchStation", {}))
+
+    ##DELETING ALL MEASUREMENTS
+    # all_measurement_euuids = await fetch_all_measurements()
+    # await delete_all_measurements(all_measurement_euuids.get("data", {}).get("searchMeasurment", {}))
+    # print(result.get("data", {}).get("searchMeasurment", {}))
     driver.quit()
     eywa.exit()
     return
