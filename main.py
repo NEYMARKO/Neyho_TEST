@@ -74,7 +74,7 @@ def parse_data_to_json(cells_text_array):
             cleaned = int(cleaned)
         data[topics[i - 1]] = cleaned
     data[topics[-1]] = datetime.datetime.utcfromtimestamp(time.time()).strftime('%Y-%m-%dT%H:%M:%SZ')
-    print(f"DATA: {data}")
+    # print(f"DATA: {data}")
     return data
 
 async def station_exists(name):
@@ -170,7 +170,7 @@ async def main():
         wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
     except:
         print("PAGE NOT LOADED SUCESSFULLY")
-        
+
     table = driver.find_element(By.XPATH, '//table[@class="fd-c-table1 table--aktualni-podaci sortable"]')
     table_body = table.find_element(By.XPATH, "./tbody")
     rows = table_body.find_elements(By.TAG_NAME, "tr")
@@ -187,6 +187,7 @@ async def main():
                 """, cell) for cell in cells]
         if await station_exists(cells_text[0]) == False:
             print(f"STATION {cells_text[0]} SHOULD GET ADDED")
+            await import_station(cells_text[0])
         else:
             print(f"SKIP ADD FOR {cells_text[0]}")
         data_array.append(parse_data_to_json(cells_text))
