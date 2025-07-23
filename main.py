@@ -64,7 +64,7 @@ def parse_data_to_json(cells_text_array):
     data["station"] = {"name": cells_text_array[0]}
     for i in range(1, len(cells_text_array)):
         #clean input
-        cleaned = re.sub(r'[^a-zA-Z0-9.\-\s]','',cells_text_array[i]).strip()
+        cleaned = re.sub(r'[^a-zA-Z0-9.čžšČŽŠ\-\s]','',cells_text_array[i]).strip()
         if (not cleaned or cleaned == '-'):
             continue
         elif (types[i] == Type.FLOAT):
@@ -73,7 +73,7 @@ def parse_data_to_json(cells_text_array):
         elif (types[i] == Type.INT):
             cleaned = int(cleaned)
         data[topics[i - 1]] = cleaned
-    data[topics[-1]] = datetime.datetime.utcfromtimestamp(time.time()).strftime('%Y-%m-%dT%H:%M:%SZ')
+    data[topics[-1]] = datetime.datetime.fromtimestamp(time.time(), datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
     # print(f"DATA: {data}")
     return data
 
@@ -158,18 +158,20 @@ async def delete_all_stations(stations_list):
 async def main():
     eywa.open_pipe()
 
+    link = "https://meteo.hr/naslovnica_aktpod.php?tab=aktpod"
     data_array = []
 
     driver = setup_driver()
 
-    driver.get("https://meteo.hr/naslovnica_aktpod.php?tab=aktpod")
+    driver.get(link)
     wait = WebDriverWait(driver, driver_wait_time)
 
     #wait until whole page is loaded
     try:
         wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
     except:
-        print("PAGE NOT LOADED SUCESSFULLY")
+        print("PAGE NOT LOADED SUCCESSFULLY")
+        return
 
     table = driver.find_element(By.XPATH, '//table[@class="fd-c-table1 table--aktualni-podaci sortable"]')
     table_body = table.find_element(By.XPATH, "./tbody")
@@ -193,14 +195,13 @@ async def main():
         data_array.append(parse_data_to_json(cells_text))
     await import_measures(data_array)
 
-    ##DELETING ALL STATIONS
+    # #DELETING ALL STATIONS
     # all_station_euuids = await fetch_all_stations()
     # await delete_all_stations(all_station_euuids.get("data", {}).get("searchStation", {}))
-
-    ##DELETING ALL MEASUREMENTS
+    #
+    # #DELETING ALL MEASUREMENTS
     # all_measurement_euuids = await fetch_all_measurements()
     # await delete_all_measurements(all_measurement_euuids.get("data", {}).get("searchMeasurment", {}))
-    # print(result.get("data", {}).get("searchMeasurment", {}))
 
     driver.quit()
     eywa.exit()
