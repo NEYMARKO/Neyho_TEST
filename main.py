@@ -130,6 +130,45 @@ async def delete_all_stations(stations_list):
         }
         """, {"euuid": euuid})
 
+async def check_if_model_deployed():
+    result = await eywa.graphql("""
+    query
+    {
+      searchDatasetVersion(_where:{euuid: {_eq: "da7acea5-fc8a-4682-98cb-16d936e0c9ee"}})
+      {
+        euuid
+        name
+        dataset
+        {
+          name
+        }
+        deployed
+      }
+    }
+    """)
+
+    temp = result.get("data", {}).get("searchDatasetVersion", {})
+    if not temp:
+        return False
+    elif temp[0].get("deployed", {}) == True:
+        print(temp[0].get("deployed", {}) == True)
+        return True
+    print(temp[0].get("deployed", {}) == True)
+
+async def deploy_model():
+    dataset = None
+    with open("Neyho_DHMZ_Test_1_2_1.json") as file:
+        dataset = file.read()
+    print(dataset)
+    return await eywa.graphql("""
+    mutation($dataset: Transit)
+    {
+        importDataset(dataset:$dataset)
+        {
+            euuid
+        }
+    }
+    """, {"dataset": dataset})
 
 async def main():
     eywa.open_pipe()
@@ -148,6 +187,12 @@ async def main():
     except:
         print("PAGE NOT LOADED SUCCESSFULLY")
         return
+
+    if await check_if_model_deployed() == False:
+        print("Deploying model")
+        await deploy_model()
+    else:
+        print("Model already deployed")
 
     table = driver.find_element(By.XPATH, '//table[@class="fd-c-table1 table--aktualni-podaci sortable"]')
     table_body = table.find_element(By.XPATH, "./tbody")
