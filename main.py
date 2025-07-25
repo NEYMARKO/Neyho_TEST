@@ -54,7 +54,7 @@ def setup_driver(headless = False):
 
     return driver
 
-def parse_data_to_json(cells_text_array):
+def format_sending_data(cells_text_array):
     data = {}
     topics = ["wind_direction", "wind_velocity", "air_temperature",
               "relative_moisture", "air_pressure", "air_tendency",
@@ -77,23 +77,11 @@ def parse_data_to_json(cells_text_array):
     # print(f"DATA: {data}")
     return data
 
-async def station_exists(name):
-    result = await eywa.graphql("""
-    query($name: String!)
-    {
-        searchStation
-        {
-            name
-        }
-    }
-    """)
-    return {"name": name} in result.get("data", {}).get("searchStation", {})
-
 async def import_measures(data):
     return await eywa.graphql("""
-    mutation($measurements:[MeasurmentInput])
+    mutation($measurements:[MeasurementInput])
     {
-        stackMeasurmentList(data:$measurements)
+        stackMeasurementList(data:$measurements)
         {
             euuid
         }
@@ -101,22 +89,10 @@ async def import_measures(data):
     
     """, {"measurements": data})
 
-async def import_station(name):
-    return await eywa.graphql("""
-    mutation($station: StationInput)
-    {
-        syncStation(data:$station)
-        {
-            euuid
-        }
-    }
-
-    """, {"station": {"name": name}})
-
 async def fetch_all_measurements():
     return await eywa.graphql("""
     {
-        searchMeasurment
+        searchMeasurement
         {
             euuid
         }
@@ -129,7 +105,7 @@ async def delete_all_measurements(measurements_list):
         await eywa.graphql("""
         mutation($euuid:UUID)
         {
-            deleteMeasurment(euuid:$euuid)
+            deleteMeasurement(euuid:$euuid)
         }
         """, {"euuid": euuid})
     print("ALL VALUES DELETED")
@@ -187,13 +163,9 @@ async def main():
                     });
                     return clone.textContent.trim();
                 """, cell) for cell in cells]
-        if await station_exists(cells_text[0]) == False:
-            print(f"STATION {cells_text[0]} SHOULD GET ADDED")
-            await import_station(cells_text[0])
-        else:
-            print(f"SKIP ADD FOR {cells_text[0]}")
-        data_array.append(parse_data_to_json(cells_text))
+        data_array.append(format_sending_data(cells_text))
     await import_measures(data_array)
+    print("IMPORTED MEASUREMENTS TO DB")
 
     # #DELETING ALL STATIONS
     # all_station_euuids = await fetch_all_stations()
@@ -201,7 +173,7 @@ async def main():
     #
     # #DELETING ALL MEASUREMENTS
     # all_measurement_euuids = await fetch_all_measurements()
-    # await delete_all_measurements(all_measurement_euuids.get("data", {}).get("searchMeasurment", {}))
+    # await delete_all_measurements(all_measurement_euuids.get("data", {}).get("searchMeasurement", {}))
 
     driver.quit()
     eywa.exit()

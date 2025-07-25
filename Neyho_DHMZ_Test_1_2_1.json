@@ -1,0 +1,180 @@
+{
+  "~:euuid": "~uda7acea5-fc8a-4682-98cb-16d936e0c9ee",
+  "~:name": "1.2.1",
+  "~:dataset": {
+    "~:euuid": "~u586bebfa-ea81-4c30-a097-bd665a795183",
+    "~:name": "Neyho_DHMZ_Test"
+  },
+  "~:model": {
+    "~#neyho.eywa.dataset.core.ERDModel": {
+      "~:entities": {
+        "~u68b20a56-bd05-4499-96b0-692c9c9990f2": {
+          "~#neyho.eywa.dataset.core.ERDEntity": {
+            "~:name": "Station",
+            "~:width": 107.3125,
+            "~:original": null,
+            "~:type": "STRONG",
+            "~:euuid": "~u68b20a56-bd05-4499-96b0-692c9c9990f2",
+            "~:clone": null,
+            "~:position": {
+              "~:x": -35,
+              "~:y": -82
+            },
+            "~:configuration": {
+              "~:constraints": {
+                "~:unique": [
+                  [
+                    "~uf4192da1-1b33-4532-9307-2767f8f20d48"
+                  ]
+                ]
+              }
+            },
+            "~:attributes": [
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~uf4192da1-1b33-4532-9307-2767f8f20d48",
+                  "~:seq": 0,
+                  "~:name": "Name",
+                  "~:constraint": "unique",
+                  "~:type": "string",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              }
+            ],
+            "~:height": 89.453125
+          }
+        },
+        "~ue41b2dac-5fa8-4ccd-bc24-24fcb3514cbb": {
+          "~#neyho.eywa.dataset.core.ERDEntity": {
+            "~:name": "Measurement",
+            "~:width": 170.28125,
+            "~:original": null,
+            "~:type": "WEAK",
+            "~:euuid": "~ue41b2dac-5fa8-4ccd-bc24-24fcb3514cbb",
+            "~:clone": null,
+            "~:position": {
+              "~:x": -372,
+              "~:y": -53.5
+            },
+            "~:configuration": {
+              "~:constraints": {
+                "~:unique": [
+                  []
+                ]
+              }
+            },
+            "~:attributes": [
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~u04ad17fe-f3fe-461a-90fc-337e513b04d6",
+                  "~:seq": 0,
+                  "~:name": "Wind Direction",
+                  "~:constraint": "optional",
+                  "~:type": "string",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~ua6e74d5f-d99a-48cd-bb04-ba20d029025a",
+                  "~:seq": 1,
+                  "~:name": "Wind Velocity",
+                  "~:constraint": "optional",
+                  "~:type": "float",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~ub92dc7c2-a3cb-4bec-936c-43d3d008ba1e",
+                  "~:seq": 2,
+                  "~:name": "Air Temperature",
+                  "~:constraint": "optional",
+                  "~:type": "float",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~u760142b8-c308-4483-8158-9fad797fb420",
+                  "~:seq": 3,
+                  "~:name": "Relative Moisture",
+                  "~:constraint": "optional",
+                  "~:type": "int",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~u963e328e-2159-4a46-aa94-6dc6147be7e0",
+                  "~:seq": 4,
+                  "~:name": "Air Pressure",
+                  "~:constraint": "optional",
+                  "~:type": "float",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~u1c8a10c5-a662-4305-96d3-bf634076eb8f",
+                  "~:seq": 5,
+                  "~:name": "Air Tendency",
+                  "~:constraint": "optional",
+                  "~:type": "float",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~uf8af0512-845b-4814-9f77-6e853d5309b5",
+                  "~:seq": 6,
+                  "~:name": "Weather State",
+                  "~:constraint": "optional",
+                  "~:type": "string",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              },
+              {
+                "~#neyho.eywa.dataset.core.ERDEntityAttribute": {
+                  "~:euuid": "~uef47adb8-59a7-43d3-9cc7-20dbe2ee7c5e",
+                  "~:seq": 7,
+                  "~:name": "Time",
+                  "~:constraint": "mandatory",
+                  "~:type": "timestamp",
+                  "~:configuration": null,
+                  "~:active": true
+                }
+              }
+            ],
+            "~:height": 201.453125
+          }
+        }
+      },
+      "~:relations": {
+        "~u3e4b132d-f64e-4e2b-a2a0-cf562ecde935": {
+          "~#neyho.eywa.dataset.core.ERDRelation": {
+            "~:euuid": "~u3e4b132d-f64e-4e2b-a2a0-cf562ecde935",
+            "~:from": "~ue41b2dac-5fa8-4ccd-bc24-24fcb3514cbb",
+            "~:to": "~u68b20a56-bd05-4499-96b0-692c9c9990f2",
+            "~:from-label": "measurements",
+            "~:to-label": "station",
+            "~:cardinality": "m2o",
+            "~:path": null
+          }
+        }
+      },
+      "~:configuration": null,
+      "~:clones": null,
+      "~:version": "1.0.0"
+    }
+  },
+  "~:deployed": false
+}
