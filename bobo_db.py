@@ -2,6 +2,8 @@ import json
 import sys
 import io
 import os
+import time
+
 import eywa
 import asyncio
 
@@ -17,8 +19,6 @@ elif os.name == 'nt':  # Windows
 
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     INPUT_DIR = os.path.join(SCRIPT_DIR, "json_input")
-    # print(INPUT_DIR)
-    os.system('chcp 65001')  # set utf-8 in windows terminal
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 INPUT_FILE = "input.json"
@@ -62,24 +62,16 @@ def get_totals_data_through_relation(input_obj):
     return totals
 
 def format_string_list_to_obj_list(string_list, attribute_name):
-    print(f"\n{attribute_name=}\n")
-
     result = []
-    # print(f"{string_list=}")
     for string in string_list:
         result.append({f'{attribute_name}' : string})
-    print(f"{result=}")
     return result
 
 def get_metadata_through_relation(input_obj):
     temp_metadata = input_obj.get('metadata')
     metadata_input = extract_data_from_metadata(temp_metadata)
-    # print(f"{metadata_input=}")
-    processing_notes_input = format_string_list_to_obj_list(temp_metadata.get('processing_notes'), 'note')
-    warnings_input = format_string_list_to_obj_list(temp_metadata.get('warnings'), 'warning')
-    metadata_input['processing_notes'] = processing_notes_input
-    metadata_input['warnings'] = warnings_input
-
+    metadata_input['processing_notes'] = format_string_list_to_obj_list(temp_metadata.get('processing_notes'), 'note')
+    metadata_input['warnings'] = format_string_list_to_obj_list(temp_metadata.get('warnings'), 'warning')
     return metadata_input
 
 def construct_sending_data_obj(input_obj):
@@ -103,6 +95,7 @@ def construct_sending_data_obj(input_obj):
         'metadata': get_metadata_through_relation(input_obj)
     }
 async def send_data_to_db(data_obj):
+    print("SENDING")
     return await eywa.graphql("""
     mutation($bp_data : InvoiceDetailsInput!)
     {
@@ -112,7 +105,7 @@ async def send_data_to_db(data_obj):
             
         }
     }
-    """, {"bp_data" : construct_sending_data_obj(data_obj)})
+    """, {"bp_data" : data_obj})
 
 
 def write_to_json_file(data: dict, relative_path: str) -> None:
@@ -120,18 +113,17 @@ def write_to_json_file(data: dict, relative_path: str) -> None:
     Writes provided data to json file in location provided by relative_path (path is relative to marko_checker.py file location)
     """
     json_str = json.dumps(data, indent=4, ensure_ascii=False)
-    with open(f'{os.path.dirname(os.path.abspath(__file__))}\{relative_path}', "w", encoding="utf-8") as f:
+    with open(fr'{os.path.dirname(os.path.abspath(__file__))}\{relative_path}', "w", encoding="utf-8") as f:
         f.write(json_str)
 
 
 async def main():
     eywa.open_pipe()
-
     input = get_input(INPUT_DIR, INPUT_FILE)
     sending_data = construct_sending_data_obj(input)
-    write_to_json_file(sending_data, "json_output\sample.json")
+    write_to_json_file(sending_data, r"json_output\sample.json")
     await send_data_to_db(sending_data)
-    # print(input)
+    print("SUCCESSFULLY SENT DATA")
     eywa.exit()
     return
 
