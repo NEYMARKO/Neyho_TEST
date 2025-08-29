@@ -55,10 +55,11 @@ def get_document_data_through_relation(input_obj):
 
 def get_totals_data_through_relation(input_obj):
     totals = input_obj.get('totals')
+    tax_breakdown = totals.get('tax_breakdown')
     if 'tax_breakdown' in totals:
         del totals['tax_breakdown']
-    tax_breakdown = input_obj.get('tax_breakdown')
     totals['tax_breakdowns'] = tax_breakdown
+    print(f"{tax_breakdown=}")
     return totals
 
 def format_string_list_to_obj_list(string_list, attribute_name):
