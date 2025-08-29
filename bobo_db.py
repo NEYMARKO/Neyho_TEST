@@ -2,7 +2,6 @@ import json
 import sys
 import io
 import os
-import time
 
 import eywa
 import asyncio
@@ -11,7 +10,7 @@ sys.path.insert(1, r"C:\Users\Marko\Desktop\Neyho\Neyho_TEST")
 if os.name == 'posix':  # (macOS, Linux)
     sys.path.insert(1, os.path.join("..", ".."))
 
-    INPUT_DIR = os.path.join(os.path.expanduser("~"), 'robots_cwd', 'verifikacija_kontakt_podataka', 'inputs')
+    INPUT_DIR = os.path.join(os.path.expanduser("~"), 'json_input')
 
 elif os.name == 'nt':  # Windows
     #root directory
@@ -20,7 +19,7 @@ elif os.name == 'nt':  # Windows
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     INPUT_DIR = os.path.join(SCRIPT_DIR, "json_input")
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 INPUT_FILE = "input.json"
 
 def get_input(input_dir, input_file):
@@ -59,7 +58,7 @@ def get_totals_data_through_relation(input_obj):
     if 'tax_breakdown' in totals:
         del totals['tax_breakdown']
     totals['tax_breakdowns'] = tax_breakdown
-    print(f"{tax_breakdown=}")
+    # print(f"{tax_breakdown=}")
     return totals
 
 def format_string_list_to_obj_list(string_list, attribute_name):
@@ -111,7 +110,7 @@ async def send_data_to_db(data_obj):
 
 def write_to_json_file(data: dict, relative_path: str) -> None:
     """
-    Writes provided data to json file in location provided by relative_path (path is relative to marko_checker.py file location)
+    Writes provided data to json file in location provided by relative_path (path is relative to bobo_db.py file location)
     """
     json_str = json.dumps(data, indent=4, ensure_ascii=False)
     with open(fr'{os.path.dirname(os.path.abspath(__file__))}\{relative_path}', "w", encoding="utf-8") as f:
@@ -123,8 +122,11 @@ async def main():
     input = get_input(INPUT_DIR, INPUT_FILE)
     sending_data = construct_sending_data_obj(input)
     write_to_json_file(sending_data, r"json_output\sample.json")
-    await send_data_to_db(sending_data)
-    print("SUCCESSFULLY SENT DATA")
+    try:
+        await send_data_to_db(sending_data)
+        print("SUCCESSFULLY SENT DATA")
+    except:
+        print("FAILED TO SEND DATA")
     eywa.exit()
     return
 
