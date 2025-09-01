@@ -4,8 +4,12 @@ import sys
 
 REF_FILE = 'reference.json'
 COMP_FILE = 'comparison.json'
-DIFFERENCE_DIR = ""
-DIFFERENCE_FILE = ""
+DIFFERENCE_DIR = 'difference'
+DIFFERENCE_FILE = 'difference.json'
+
+ADD_MACRO = "ADDED to new file"
+MISS_MACRO = "MISSING from new file"
+DIFF_MACRO = "DIFFERENT from reference file"
 
 sys.path.insert(1, r"C:\Users\Marko\Desktop\Neyho\Neyho_TEST")
 if os.name == 'posix':  # (macOS, Linux)
@@ -27,6 +31,14 @@ def load_json_file(input_dir : str, input_file : str) -> dict:
     except:
         print(f"Failed to load {input_dir}/{input_file}")
 
+def write_to_json_file(data: dict, directory: str, file_name: str) -> None:
+    """
+    Writes provided data to json file in location provided by relative_path (path is relative to bobo_db.py file location)
+    """
+    json_str = json.dumps(data, indent=4, ensure_ascii=False)
+    with open(os.path.join(directory, file_name), "w", encoding="utf-8") as f:
+        f.write(json_str)
+
 def compare_json_files(reference_value : dict|str|float|list, 
                        comparison_value : dict|str|float|list,
                        path : str, diffs : dict[str, list[str]]) -> None:
@@ -43,11 +55,11 @@ def compare_json_files(reference_value : dict|str|float|list,
             #combined_key doesn't exist in reference_value => File that we are comparing
             #has some extra data relative to reference file
             if combined_key not in reference_value:
-                diffs.get('ADDED').append(f"{path}{'->' if path else ''}{combined_key}")
+                diffs.get(ADD_MACRO).append(f"{path}{'.' if path else ''}{combined_key}")
             #combined_key doesn't exist in comparison_value => File that we are comparing
             #is missing some data relative to reference file
             if combined_key not in comparison_value:
-                diffs.get('MISSING').append(f"{path}{'->' if path else ''}{combined_key}")
+                diffs.get(MISS_MACRO).append(f"{path}{'.' if path else ''}{combined_key}")
 
             # if ref_key not in comparison_value:
             #     # print(f"ref key: {ref_key}, comp_value: {comparison_value}")
@@ -57,7 +69,7 @@ def compare_json_files(reference_value : dict|str|float|list,
             # else:
             if combined_key in reference_value and combined_key in comparison_value:
                 # print("\nIN\n")
-                new_path = f"{path}{"->" if path != "" else ""}{combined_key}"
+                new_path = f"{path}{'.' if path != "" else ""}{combined_key}"
                 compare_json_files(ref_value, comp_value, new_path, diffs)
                 # path = path.replace(ref_key, "")
     
@@ -66,11 +78,11 @@ def compare_json_files(reference_value : dict|str|float|list,
         if isinstance(reference_value, list) and isinstance(comparison_value, list):
             for i in range(len(reference_value)):
                 # print(f"\n{reference_value=}\n")
-                new_path = f"{path}{"->" if path != "" else ""}[{i + 1}]"
+                new_path = f"{path}{'.' if path != "" else ""}[{i + 1}]"
                 compare_json_files(reference_value[i], comparison_value[i], new_path, diffs)
         else:
             if reference_value != comparison_value:
-                diffs.get('DIFFERENT').append(f"{path}->{reference_value}/{comparison_value}")
+                diffs.get(DIFF_MACRO).append({path: {"original": reference_value, "new": comparison_value}})
                 return
             else:
                 return
@@ -85,14 +97,14 @@ def main():
     print("=" * 100)
     reference_value = load_json_file(INPUT_DIR, REF_FILE)
     comparison_value = load_json_file(INPUT_DIR, COMP_FILE)
-    diffs = {'ADDED': [], 'MISSING': [], 'DIFFERENT': []}
+    diffs = {ADD_MACRO: [], MISS_MACRO: [], DIFF_MACRO: []}
     path = ""
     compare_json_files(reference_value, comparison_value, path, diffs)
-    if not any((diffs.get('ADDED'), diffs.get('MISSING'), diffs.get('DIFFERENT'))):
+    if not any((diffs.get(ADD_MACRO), diffs.get(MISS_MACRO), diffs.get(DIFF_MACRO))):
         print("NO differences")
     else:
         print("Files contain some differences")
-    print(f"{diffs=}")
+    write_to_json_file(diffs, DIFFERENCE_DIR, DIFFERENCE_FILE)
     
     return
 
