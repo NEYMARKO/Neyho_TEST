@@ -65,13 +65,15 @@ def compare_json_files(reference_value : dict|str|float|list,
     elif not isinstance(reference_value, dict) and not isinstance(comparison_value, dict):
         if isinstance(reference_value, list) and isinstance(comparison_value, list):
             for i in range(len(reference_value)):
-                new_path = f"{path}{"->" if path != "" else ""}{reference_value[i]}"
+                # print(f"\n{reference_value=}\n")
+                new_path = f"{path}{"->" if path != "" else ""}[{i + 1}]"
                 compare_json_files(reference_value[i], comparison_value[i], new_path, diffs)
-        if reference_value != comparison_value:
-            diffs.get('DIFFERENT').append(f"{path}: {reference_value}/{comparison_value}")
-            return
         else:
-            return
+            if reference_value != comparison_value:
+                diffs.get('DIFFERENT').append(f"{path}->{reference_value}/{comparison_value}")
+                return
+            else:
+                return
     #either reference_value or comparison value is dict, while the other is not
     else:
         diffs.append(path)
@@ -80,6 +82,7 @@ def compare_json_files(reference_value : dict|str|float|list,
 def main():
     # reference_value = {'a': 2, 'b': { 'b1': 2.1 }, 'c' : { 'c1' : { 'c2' : 2.11 } }, 'l' : [{'a': 1}, {'b': 2}] }
     # comparison_value = {'a': 4, 'c' : { 'c2' : { 'c2' : 2.711 } }, 'b': { 'b1': 2.2, 'b2': 2.3 }, 'l' : [{'a': 1}, {'b': 3}] }
+    print("=" * 100)
     reference_value = load_json_file(INPUT_DIR, REF_FILE)
     comparison_value = load_json_file(INPUT_DIR, COMP_FILE)
     diffs = {'ADDED': [], 'MISSING': [], 'DIFFERENT': []}
@@ -90,6 +93,7 @@ def main():
     else:
         print("Files contain some differences")
     print(f"{diffs=}")
+    
     return
 
 if __name__ == '__main__':
