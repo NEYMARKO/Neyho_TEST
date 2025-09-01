@@ -97,13 +97,17 @@ def main():
     print("=" * 100)
     reference_value = load_json_file(INPUT_DIR, REF_FILE)
     comparison_value = load_json_file(INPUT_DIR, COMP_FILE)
-    diffs = {ADD_MACRO: [], MISS_MACRO: [], DIFF_MACRO: []}
+    diffs = {"total_runs": 0, "total_diffs": 0, ADD_MACRO: [], MISS_MACRO: [], DIFF_MACRO: []}
     path = ""
     compare_json_files(reference_value, comparison_value, path, diffs)
+    diff_content = load_json_file(DIFFERENCE_DIR, DIFFERENCE_FILE)
     if not any((diffs.get(ADD_MACRO), diffs.get(MISS_MACRO), diffs.get(DIFF_MACRO))):
         print("NO differences")
+        diffs['total_diffs'] = diff_content.get('total_diffs')
     else:
         print("Files contain some differences")
+        diffs['total_diffs'] = diff_content.get('total_diffs') + 1
+    diffs['total_runs'] = diff_content.get('total_runs') + 1
     write_to_json_file(diffs, DIFFERENCE_DIR, DIFFERENCE_FILE)
     
     return
