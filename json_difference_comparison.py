@@ -42,7 +42,24 @@ def write_to_json_file(data: dict, directory: str, file_name: str) -> None:
 def compare_json_files(reference_value : dict|str|float|list, 
                        comparison_value : dict|str|float|list,
                        path : str, diffs : dict[str, list[str]]) -> None:
-    # print(f"{reference_value=}\n{comparison_value=}")
+    """
+    Recursive function that goes deeper into data structure if reference_value
+    and comparison_value are aggregates (like dicts and lists), otherwise it compares
+    passed values. Function goes all the way down to the leaves (values that can be compared).
+
+    Args:
+      reference_value: Starts as dictionary (full content of referent json file), and is gradually
+      broken down as program is going down the structure to the leaf elements
+      (until it gets to the values it can compare).
+      comparison_value: Same as reference_value, but contains full content of json that needs to be
+      compared.
+      path: String that represents path to the potentionally different value. It is gradually updated
+      as program descends further into the structure (it is made out of keys and list names).
+      diffs: Dictionary containing information about: added, missing and different elements and values
+      compared to reference data. 
+    Returns: 
+        None.
+    """
     #both values are dicts => go deeper in the structure
     if isinstance(reference_value, dict) and isinstance(comparison_value, dict):
         all_keys = set(reference_value.keys()) |set(comparison_value.keys())
@@ -61,31 +78,27 @@ def compare_json_files(reference_value : dict|str|float|list,
             if combined_key not in comparison_value:
                 diffs.get(MISS_MACRO).append(f"{path}{'.' if path else ''}{combined_key}")
 
-            # if ref_key not in comparison_value:
-            #     # print(f"ref key: {ref_key}, comp_value: {comparison_value}")
-            #     # print(f"HERE: {path}")
-            #     diffs.append(path)
-            #     return
-            # else:
             if combined_key in reference_value and combined_key in comparison_value:
-                # print("\nIN\n")
                 new_path = f"{path}{'.' if path != "" else ""}{combined_key}"
                 compare_json_files(ref_value, comp_value, new_path, diffs)
-                # path = path.replace(ref_key, "")
     
-    #neither value is dict => they should be compared
     elif not isinstance(reference_value, dict) and not isinstance(comparison_value, dict):
         if isinstance(reference_value, list) and isinstance(comparison_value, list):
             for i in range(len(reference_value)):
-                # print(f"\n{reference_value=}\n")
-                new_path = f"{path}{'.' if path != "" else ""}[{i + 1}]"
+                new_path = f"{path}[{i + 1}]"
                 compare_json_files(reference_value[i], comparison_value[i], new_path, diffs)
-        else:
+        #both values are neither dict nor list => can't go deeper into the structure
+        #they must be comparable values
+        elif not isinstance(reference_value, list) and not isinstance(comparison_value, list):
             if reference_value != comparison_value:
                 diffs.get(DIFF_MACRO).append({path: {"original": reference_value, "new": comparison_value}})
                 return
+            #values are the same, no need to add them to difference dictionary
             else:
                 return
+        else:
+            diffs.append(path)
+            return
     #either reference_value or comparison value is dict, while the other is not
     else:
         diffs.append(path)
