@@ -2,7 +2,7 @@ from pywinauto.application import Application, WindowSpecification
 from time import sleep
 import re
 
-def save_file(window : WindowSpecification, file_name : str = "", file_path : str = "") -> None:
+def save_file(window : WindowSpecification, file_name : str = "", file_path : str = "", override_existent : bool = False) -> None:
     save_as_dialog_popup = window.child_window(title="Save As", control_type="Window")
     
     if file_name:
@@ -19,6 +19,13 @@ def save_file(window : WindowSpecification, file_name : str = "", file_path : st
         edit_elem.type_keys("{ENTER}")
     save_btn = save_as_dialog_popup.child_window(title="Save", control_type="Button")
     save_btn.click()
+
+    try:
+        confirm_save_popup = save_as_dialog_popup.child_window(title="Confirm Save As")
+        button = confirm_save_popup.child_window(title=("Yes" if override_existent else "No"), control_type="Button")
+        button.click()
+    except:
+        print("Unable to locate button or popup")
     return
 
 def select_menu_item(item_name : str, window : WindowSpecification) -> None:
@@ -43,7 +50,7 @@ def write_to_new_file(window : WindowSpecification) -> None:
     text_area = window.child_window(class_name="Scintilla")
     text_area.type_keys("OPENING new window to test functionality^s", with_spaces=True)
     
-    save_file(window=window, file_name="test_pywinauto", file_path=r"C:\Users\Marko\Desktop\NEYHO")
+    save_file(window=window, file_name="test_pywinauto", file_path=r"C:\Users\Marko\Desktop\NEYHO", override_existent=True)
 
     return
 
