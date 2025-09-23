@@ -59,22 +59,10 @@ def extract_values_from_validation(validation_formula : any, wb : any) -> list[s
         else:
             allowed_values = [v.strip() for v in validation_formula.split(",")]
         
-        # print(f"Dropdown values: {allowed_values}")
         return allowed_values
     
     except:
         print("No validation available")
-
-def pick_dropdown_value(cell_name : str, value : str, ws : any, wb : any) -> None:
-    cell = ws.Range(cell_name)
-    cell.Select()
-    validation = ws.Range(cell_name).Validation
-    if value not in extract_values_from_validation(validation_formula=validation.Formula1, wb=wb):
-        print(f"Value {value} not defined")
-        return
-    cell.Value = value
-
-    return
 
 def batch_row_insert(row : int, start_col : int, end_col : int, data : list[str], ws : any) -> None:
     used_range = ws.UsedRange
@@ -82,9 +70,6 @@ def batch_row_insert(row : int, start_col : int, end_col : int, data : list[str]
         data_2d = [row_details]
         target_range = ws.Range(used_range.Cells(row, start_col), used_range.Cells(row, end_col))
         target_range.Value = data_2d
-    # data_2d = [data]
-    # target_range = ws.Range(ws.Cells(row, start_col), ws.Cells(row, end_col))
-    # target_range.Value = data_2d
 
     return
 
@@ -92,27 +77,26 @@ def find_employee_in_table(id : str, ws : any) -> tuple[list[str], int]:
     """
     Returns row's content and index for employee that matches parameter id.
     """
-    found_cell = ws.UsedRange.Find(What=id)
+    used_range = ws.UsedRange
+    found_cell = used_range.Find(What=id)
     if found_cell:
         row = found_cell.Row
-        col_cnt = ws.UsedRange.Columns.Count
-        return ([ws.Cells(row, col).Value for col in range(1, col_cnt + 1)], row)
+        col_cnt = used_range.Columns.Count
+        return ([used_range.Cells(row, col).Value for col in range(1, col_cnt + 1)], row)
     return ([], -1)
 
-def populate_output(excel_app : any, employees_data : list[Employee]) -> None:
+def fill_master_table(excel_app : any, employees_data : list[Employee]) -> None:
 
     wb = excel_app.openFile(EXCEL_OUTPUT_PATH)
     ws = excel_app.resolveSheet("Evidencija", wb.Name)
-
+    used_range = ws.UsedRange
     columns_count = ws.UsedRange.Columns.Count
 
     starting_col = -1
     ending_col = -1
     for i in range(1, columns_count + 1):
         try:
-            # print(f"CELL VALUE : {ws.Cells(OUTPUT_FILE_HEADER_ROW, i).Value}")
             int(ws.Cells(OUTPUT_FILE_HEADER_ROW, i).Value)
-            # days_columns_indexes.append(i)
             if starting_col == -1:
                 starting_col = i
         except:
@@ -120,8 +104,8 @@ def populate_output(excel_app : any, employees_data : list[Employee]) -> None:
                 ending_col = i - 1
                 break
     
-    print(f"{starting_col=}, {ending_col=}")
     data = []
+    print("Should remove or update cashe if there are more than 1 formulas")
     validation_cache = []
     for employee in employees_data:
         row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
@@ -129,9 +113,7 @@ def populate_output(excel_app : any, employees_data : list[Employee]) -> None:
         if row_data:
             codes_list = []
             for i in range(starting_col, ending_col + 1):
-                cell = ws.Cells(row, i)
-                # cell_name = cell.Address
-                # print(f"CELL NAME: {cell_name}")
+                cell = used_range.Cells(row, i)
                 #i - starting_col because loop starts from starting_col => list items are in range [0, len(list)]
                 value = employee.monthly_data[i - starting_col]
                 if not validation_cache:
@@ -140,8 +122,6 @@ def populate_output(excel_app : any, employees_data : list[Employee]) -> None:
                     codes_list.append(None)
                     continue
                 codes_list.append(value)
-                # pick_dropdown_value(cell_name=cell_name, value=value, ws=ws, wb=wb)
-        # print(f"Row data: {data}")
         row_tuple = (row, codes_list)
         data.append(row_tuple)
     batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
@@ -164,7 +144,7 @@ def main():
 
     categories = {}
     for i in range(1, col_count + 1):
-        categories[i] = ws.Cells(1, i).Value
+        categories[i] = used_range.Cells(1, i).Value
 
     for i in range(2, row_count + 1):
         row_values = {}
@@ -183,10 +163,9 @@ def main():
         employees.append(Employee(row=row_values))
 
     excel_app.closeFile(EXCEL_INPUT_PATH)
-    # for employee in employees:
-    #     employee.print_data()
+
     start_time = time.perf_counter()
-    populate_output(excel_app=excel_app, employees_data=employees)
+    fill_master_table(excel_app=excel_app, employees_data=employees)
     end_time = time.perf_counter()
 
     print(f"Insert lasted: {end_time - start_time}s")
