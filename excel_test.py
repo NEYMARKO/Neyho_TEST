@@ -51,7 +51,11 @@ def extract_values_from_validation(validation_formula : any, wb : any) -> list[s
             sheet_name = sheet_name.strip("'")
             ref_ws = wb.Sheets(sheet_name)
             ref_range = ref_ws.Range(adress_range)
-            allowed_values = [c.Value for c in ref_range if c.Value is not None]
+            values_2d = ref_range.Value
+            for row in values_2d:
+                for value in row:
+                    if value:
+                        allowed_values.append(value)
         else:
             allowed_values = [v.strip() for v in validation_formula.split(",")]
         
@@ -73,9 +77,14 @@ def pick_dropdown_value(cell_name : str, value : str, ws : any, wb : any) -> Non
     return
 
 def batch_row_insert(row : int, start_col : int, end_col : int, data : list[str], ws : any) -> None:
-    data_2d = [data]
-    target_range = ws.Range(ws.Cells(row, start_col), ws.Cells(row, end_col))
-    target_range.Value = data_2d
+    used_range = ws.UsedRange
+    for row, row_details in data:
+        data_2d = [row_details]
+        target_range = ws.Range(used_range.Cells(row, start_col), used_range.Cells(row, end_col))
+        target_range.Value = data_2d
+    # data_2d = [data]
+    # target_range = ws.Range(ws.Cells(row, start_col), ws.Cells(row, end_col))
+    # target_range.Value = data_2d
 
     return
 
@@ -112,24 +121,30 @@ def populate_output(excel_app : any, employees_data : list[Employee]) -> None:
                 break
     
     print(f"{starting_col=}, {ending_col=}")
+    data = []
+    validation_cache = []
     for employee in employees_data:
         row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
         print(f"{row=}")
-        data = []
         if row_data:
+            codes_list = []
             for i in range(starting_col, ending_col + 1):
                 cell = ws.Cells(row, i)
                 # cell_name = cell.Address
                 # print(f"CELL NAME: {cell_name}")
                 #i - starting_col because loop starts from starting_col => list items are in range [0, len(list)]
                 value = employee.monthly_data[i - starting_col]
-                if not value or value not in extract_values_from_validation(validation_formula=cell.Validation.Formula1, wb=wb):
-                    data.append("")
+                if not validation_cache:
+                    validation_cache = extract_values_from_validation(validation_formula=cell.Validation.Formula1, wb=wb)
+                if not value or value not in validation_cache:
+                    codes_list.append(None)
                     continue
-                data.append(value)
+                codes_list.append(value)
                 # pick_dropdown_value(cell_name=cell_name, value=value, ws=ws, wb=wb)
-        print(f"Row data: {data}")
-        batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
+        # print(f"Row data: {data}")
+        row_tuple = (row, codes_list)
+        data.append(row_tuple)
+    batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(EXCEL_OUTPUT_PATH)
     return
@@ -161,9 +176,9 @@ def main():
         for j in range(1, col_count + 1):
             try:
                 int(categories.get(j))
-                monthly_data.append(ws.Cells(i, j).Value)
+                monthly_data.append(used_range.Cells(i, j).Value)
             except:
-                row_values[categories.get(j)] = ws.Cells(i, j).Value
+                row_values[categories.get(j)] = used_range.Cells(i, j).Value
         row_values['monthly_data'] = monthly_data
         employees.append(Employee(row=row_values))
 
