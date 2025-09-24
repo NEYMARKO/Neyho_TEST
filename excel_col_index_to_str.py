@@ -15,6 +15,4 @@ while True:
         a = column_index % 26
         column_index //= 26
         column_code += chr(65 + a)
-    if column_index != 0:
-        column_code += chr(65 + column_index)
     print(column_code[::-1])
