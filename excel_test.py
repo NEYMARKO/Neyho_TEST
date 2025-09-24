@@ -12,7 +12,7 @@ EXCEL_OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXC
 # excel.Visible = True
 
 OUTPUT_FILE_HEADER_ROW = 2
-
+UNDEFINED_CODE_MESSAGE = "Navedena šifra se ne poklapa sa listom šifri, molim provjeru."
 class Employee:
     
     def __init__(self, row : dict) -> None:
@@ -22,10 +22,16 @@ class Employee:
         self.last_name = row.get('Surname', '')
         self.monthly_data = row.get('monthly_data', '')
     
-    def struct_data(self):
+    def struct_data(self) -> list[str]:
         return [self.ID, self.organization_unit, self.first_name, self.last_name, self.monthly_data]
 
-    def print_data(self):
+    def get_full_name(self) -> str:
+        return self.first_name + self.last_name
+    
+    def gather_report_info(self) -> dict:
+        return {"Employee ID": self.ID, "Organization Name": self.organization_unit}
+    
+    def print_data(self) -> None:
         structured_data = self.struct_data()
         for value in structured_data:
             print(f"{value} ", end='')
@@ -107,23 +113,31 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> None:
     data = []
     print("Should remove or update cashe if there are more than 1 formulas")
     validation_cache = []
+    code_reports = []
+
     for employee in employees_data:
+        captured_undefined_codes = []
         row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
         print(f"{row=}")
         if row_data:
-            codes_list = []
+            month_codes_input = []
             for i in range(starting_col, ending_col + 1):
                 cell = used_range.Cells(row, i)
                 #i - starting_col because loop starts from starting_col => list items are in range [0, len(list)]
-                value = employee.monthly_data[i - starting_col]
+                code = employee.monthly_data[i - starting_col]
                 if not validation_cache:
                     validation_cache = extract_values_from_validation(validation_formula=cell.Validation.Formula1, wb=wb)
-                if not value or value not in validation_cache:
-                    codes_list.append(None)
+                if code and code not in validation_cache:
+                    month_codes_input.append(None)
+                    if code not in captured_undefined_codes:
+                        captured_undefined_codes.append(code)
+                        code_reports.append({"Šifra": code, "Datum": 1, "Employee ID": employee.ID, "Organization Name": employee.organization_unit, "Komentar": UNDEFINED_CODE_MESSAGE})
                     continue
-                codes_list.append(value)
-        row_tuple = (row, codes_list)
+                month_codes_input.append(code)
+        row_tuple = (row, month_codes_input)
         data.append(row_tuple)
+    for report in code_reports:
+        print(f"{report=}")
     batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(EXCEL_OUTPUT_PATH)
@@ -162,6 +176,8 @@ def main():
         row_values['monthly_data'] = monthly_data
         employees.append(Employee(row=row_values))
 
+    # for employee in employees:
+    #     print(f"{employee.ID=}")
     excel_app.closeFile(EXCEL_INPUT_PATH)
 
     start_time = time.perf_counter()
