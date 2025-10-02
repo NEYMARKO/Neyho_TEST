@@ -8,6 +8,8 @@ EXCEL_INPUT_FILE = "DS_06_2025_168_BB.xlsx"
 EXCEL_INPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_INPUT_FILE)
 EXCEL_OUTPUT_FILE = "Hospira evidencije rada 06-2025.xlsm"
 EXCEL_OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_OUTPUT_FILE)
+EXCEL_REPORTS_FILE = "Reports.xlsx"
+EXCEL_REPORTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_REPORTS_FILE)
 # excel = win32.gencache.EnsureDispatch('Excel.Application')
 # excel.Visible = True
 
@@ -91,8 +93,10 @@ def find_employee_in_table(id : str, ws : any) -> tuple[list[str], int]:
         return ([used_range.Cells(row, col).Value for col in range(1, col_cnt + 1)], row)
     return ([], -1)
 
-def fill_master_table(excel_app : any, employees_data : list[Employee]) -> None:
-
+def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[dict]:
+    """
+    Fills master table and returns code reports as result.
+    """
     wb = excel_app.openFile(EXCEL_OUTPUT_PATH)
     ws = excel_app.resolveSheet("Evidencija", wb.Name)
     used_range = ws.UsedRange
@@ -115,6 +119,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> None:
     validation_cache = []
     code_reports = []
 
+    month, year = extract_date_from_name(EXCEL_OUTPUT_FILE)
     for employee in employees_data:
         captured_undefined_codes = []
         row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
@@ -131,7 +136,8 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> None:
                     month_codes_input.append(None)
                     if code not in captured_undefined_codes:
                         captured_undefined_codes.append(code)
-                        code_reports.append({"Šifra": code, "Datum": 1, "Employee ID": employee.ID, "Organization Name": employee.organization_unit, "Komentar": UNDEFINED_CODE_MESSAGE})
+                        date = f"{"0" if (i - starting_col) < 10 else ""}{i-starting_col}.{month}.{year}"
+                        code_reports.append({"Šifra": code, "Datum": date, "Employee ID": employee.ID, "Organization Name": employee.organization_unit, "Komentar": UNDEFINED_CODE_MESSAGE})
                     continue
                 month_codes_input.append(code)
         row_tuple = (row, month_codes_input)
@@ -141,8 +147,34 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> None:
     batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(EXCEL_OUTPUT_PATH)
+    return code_reports
+
+def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
+
+    wb = excel_app.openFile(EXCEL_REPORTS_PATH)
+    print("ALIGN SHEET NAME TO MATCH SHEET NAME FROM FILE")
+    ws = excel_app.resolveSheet("Sheet1", wb.Name)
+    used_range = ws.UsedRange
+    columns_count = used_range.Columns.Count
+
+    row = 2
+    for report in code_reports:
+        # print(list(report.values()))
+        data_2d = [list(report.values())]
+        target_range = ws.Range(used_range.Cells(row, 1), used_range(row, columns_count))
+        row += 1
+        target_range.Value = data_2d
+    wb.Save()
+    excel_app.closeFile(EXCEL_REPORTS_PATH)
     return
 
+def extract_date_from_name(file_name : str) -> tuple[str, str]:
+    l = file_name.split(" ")
+    for part in l:
+        if ("-") in part:
+            date = part.split("-")
+            return date[0], date[1].partition(".")[0]
+    return
 
 def main():
 
@@ -155,7 +187,7 @@ def main():
     col_count = used_range.Columns.Count
 
     employees = []
-
+    
     categories = {}
     for i in range(1, col_count + 1):
         categories[i] = used_range.Cells(1, i).Value
@@ -181,10 +213,13 @@ def main():
     excel_app.closeFile(EXCEL_INPUT_PATH)
 
     start_time = time.perf_counter()
-    fill_master_table(excel_app=excel_app, employees_data=employees)
+    code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
     end_time = time.perf_counter()
 
     print(f"Insert lasted: {end_time - start_time}s")
+
+    fill_reports_table(excel_app, code_reports)
+
     excel_app.quit()
     return
 
