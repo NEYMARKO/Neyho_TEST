@@ -4,6 +4,8 @@ from excel import PyExcel
 import time
 # import pyautogui
 
+INPUT_FOLDER = "INPUT"
+INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
 EXCEL_INPUT_FILE = "DS_06_2025_168_BB.xlsx"
 EXCEL_INPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_INPUT_FILE)
 EXCEL_OUTPUT_FILE = "Hospira evidencije rada 06-2025.xlsm"
@@ -78,7 +80,7 @@ def batch_row_insert(row : int, start_col : int, end_col : int, data : list[str]
         data_2d = [row_details]
         target_range = ws.Range(used_range.Cells(row, start_col), used_range.Cells(row, end_col))
         target_range.Value = data_2d
-
+        # print(f"ENTERED: (row, s_col, e_col) : ({row}, {start_col}, {end_col})")
     return
 
 def find_employee_in_table(id : str, ws : any) -> tuple[list[str], int]:
@@ -134,16 +136,18 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
                     validation_cache = extract_values_from_validation(validation_formula=cell.Validation.Formula1, wb=wb)
                 if code and code not in validation_cache:
                     month_codes_input.append(None)
-                    if code not in captured_undefined_codes:
-                        captured_undefined_codes.append(code)
-                        date = f"{"0" if (i - starting_col) < 10 else ""}{i-starting_col}.{month}.{year}"
-                        code_reports.append({"Šifra": code, "Datum": date, "Employee ID": employee.ID, "Organization Name": employee.organization_unit, "Komentar": UNDEFINED_CODE_MESSAGE})
+                    # if code not in captured_undefined_codes:
+                    captured_undefined_codes.append(code)
+                    # + 1 because it is starting from 1, not from 0 (first day in month has value
+                    # of 1, not 0) 
+                    date = f"{"0" if (i - starting_col + 1) < 10 else ""}{i-starting_col + 1}.{month}.{year}"
+                    code_reports.append({"Šifra": code, "Datum": date, "Employee ID": employee.ID, "Organization Name": employee.organization_unit, "Komentar": UNDEFINED_CODE_MESSAGE})
                     continue
                 month_codes_input.append(code)
-        row_tuple = (row, month_codes_input)
-        data.append(row_tuple)
-    for report in code_reports:
-        print(f"{report=}")
+            row_tuple = (row, month_codes_input)
+            data.append(row_tuple)
+    # for report in code_reports:
+    #     print(f"{report=}")
     batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(EXCEL_OUTPUT_PATH)
@@ -192,25 +196,40 @@ def main():
     for i in range(1, col_count + 1):
         categories[i] = used_range.Cells(1, i).Value
 
-    for i in range(2, row_count + 1):
-        row_values = {}
-        monthly_data = []
+    excel_app.closeFile(EXCEL_INPUT_PATH)
 
-        if row_empty(row=i, col_cnt=col_count, ws=ws):
-            break
+    os.chdir('/')
+    os.chdir(INPUT_FOLDER_PATH)
+    files = os.listdir()
+    print(f"{files=}")
+    for file in files:
+        file_path = f"{INPUT_FOLDER_PATH}/{file}"
+        wb = excel_app.openFile(file_path=file_path)
+        ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
 
-        for j in range(1, col_count + 1):
-            try:
-                int(categories.get(j))
-                monthly_data.append(used_range.Cells(i, j).Value)
-            except:
-                row_values[categories.get(j)] = used_range.Cells(i, j).Value
-        row_values['monthly_data'] = monthly_data
-        employees.append(Employee(row=row_values))
+        used_range = ws.UsedRange
+        row_count = used_range.Rows.Count
+        col_count = used_range.Columns.Count
 
+        for i in range(2, row_count + 1):
+            row_values = {}
+            monthly_data = []
+
+            if row_empty(row=i, col_cnt=col_count, ws=ws):
+                break
+
+            for j in range(1, col_count + 1):
+                try:
+                    int(categories.get(j))
+                    monthly_data.append(used_range.Cells(i, j).Value)
+                except:
+                    row_values[categories.get(j)] = used_range.Cells(i, j).Value
+            row_values['monthly_data'] = monthly_data
+            employees.append(Employee(row=row_values))
+        excel_app.closeFile(file_path=file_path)
     # for employee in employees:
     #     print(f"{employee.ID=}")
-    excel_app.closeFile(EXCEL_INPUT_PATH)
+    # excel_app.closeFile(EXCEL_INPUT_PATH)
 
     start_time = time.perf_counter()
     code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
