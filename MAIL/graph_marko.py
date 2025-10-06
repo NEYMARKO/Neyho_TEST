@@ -19,6 +19,7 @@ from msgraph.generated.models.recipient import Recipient
 from msgraph.generated.models.email_address import EmailAddress
 from kiota_abstractions.base_request_configuration import RequestConfiguration
 
+from bs4 import BeautifulSoup
 import os
 import json
 import re 
@@ -48,6 +49,19 @@ def save_attachment(attachments):
                 f.write(file_bytes)
                 f.close()
             print(f"Saved: {a.name}")
+
+def clean_body(body : str) -> str:
+    # print(f"DIRTY BODY: {body}")
+    soup = BeautifulSoup(body, "html.parser")
+
+    for img in soup.find_all("img"):
+        img.decompose()
+
+    for sig in soup.find_all(attrs={"class": re.compile(r"signature|footer", re.I)}):
+        sig.decompose()
+
+    text = soup.get_text(separator="\n").strip()
+    return re.sub('From?(.*?)Subject:', '', text, flags=re.DOTALL).strip()
 
 class Mail:
     def __init__(self, message):
@@ -126,7 +140,7 @@ class Graph:
         request_configuration = RequestConfiguration(
             query_parameters=query_params
         )
-        request_configuration.headers.add("Prefer", f"outlook.body-content-type=\"text\"")
+        # request_configuration.headers.add("Prefer", f"outlook.body-content-type=\"text\"")
         messages = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
         by_mail_folder_id('inbox').messages.get(
             request_configuration
@@ -136,7 +150,7 @@ class Graph:
     async def download_attachments(self, messages, recipient_id): 
         for message in messages.value:
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
-            print(f"{message.body.content}")
+            print(f"{clean_body(message.body.content)}")
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)
