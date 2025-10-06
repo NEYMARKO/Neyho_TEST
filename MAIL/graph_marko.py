@@ -21,6 +21,7 @@ from kiota_abstractions.base_request_configuration import RequestConfiguration
 
 import os
 import json
+import re 
 
 DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_DOWNLOAD')
 
@@ -31,9 +32,9 @@ def file_valid(attachment):
     attachment.name.endswith("pdf") or attachment.name.endswith("xlsx")
 
 def save_attachment(attachments):
-    print("ENTERED SAVE ATTACHMENT")
+    # print("ENTERED SAVE ATTACHMENT")
     for a in attachments.value:
-        print(f"Attachment: {a.name}")
+        # print(f"Attachment: {a.name}")
         # content_bytes = a.content_bytes
         # odata_type = a.odata_type
         # print(f"{odata_type=}")
@@ -48,13 +49,12 @@ def save_attachment(attachments):
                 f.close()
             print(f"Saved: {a.name}")
 
-def prompt_callback(*args):
-    for arg in args:
-        print(f"{arg=}")
-    print(f"Open URL: {args[0]}")
-    print(f"Enter code: {args[1]}")
-    # import pyperclip
-    # pyperclip.copy(args[1])
+class Mail:
+    def __init__(self, message):
+        self.body = re.sub(r'\<[^>]*\>', '', message.body.content)
+        self.sender = message.sender,
+        self.subject = message.subject,
+        self.attachments = [],
 
 class Graph:
     settings: SectionProxy
@@ -117,23 +117,31 @@ class Graph:
         return messages
     # </GetInboxSnippet>
 
-    async def download_attachments(self):
+    async def get_mails(self, recipient_id):
         query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
-            select = ['sender', 'subject', 'hasAttachments', 'body']
+            select = ['sender', 'subject', 'hasAttachments', 'body'],
+            top = 1,
+            orderby=['receivedDateTime DESC']
         )
         request_configuration = RequestConfiguration(
             query_parameters=query_params
         )
-        messages = await self.app_client.users.by_user_id("<id>").messages.get(
+        request_configuration.headers.add("Prefer", f"outlook.body-content-type=\"text\"")
+        messages = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
+        by_mail_folder_id('inbox').messages.get(
             request_configuration
         )
-        if messages and messages.value:
-            for message in messages.value:
-                print(f"MESSAGE: {message.subject}")
-                attachments = await self.app_client.users.by_user_id("<id>")\
-                .messages.by_message_id(message.id).attachments.get()
-                save_attachment(attachments)
-    
+        return messages
+
+    async def download_attachments(self, messages, recipient_id): 
+        for message in messages.value:
+            # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
+            print(f"{message.body.content}")
+            attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
+                by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
+            save_attachment(attachments)
+        return
+
     async def get_users(self):
         query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
             select = ['displayName', 'id', 'mail'],
@@ -168,10 +176,4 @@ class Graph:
 
     async def close(self):
         await self.client_credential.close()
-
-    # <MakeGraphCallSnippet>
-    async def make_graph_call(self):
-        # INSERT YOUR CODE HERE
-        return
-    # </MakeGraphCallSnippet>
 

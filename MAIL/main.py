@@ -1,11 +1,14 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# <ProgramSnippet>
 import asyncio
 import configparser
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from graph_marko import Graph
+
+from time import sleep
+# RECIPIENTS_LIST = ["05ff32cc-49a4-48ae-a4a6-808e8864e71b", "b247c66a-2651-4ff9-a6a1-858a24f30387"]
+RECIPIENTS_LIST = ["b247c66a-2651-4ff9-a6a1-858a24f30387"]
 
 async def display_access_token(graph: Graph) -> None:
     token = await graph.get_app_only_token()
@@ -22,18 +25,30 @@ async def main():
     azure_settings = config['azure']
     
     graph: Graph = Graph(azure_settings)
-    try: 
-        # await display_access_token(graph=graph)
-        # await greet_user(graph)
-        print(f"USERS: {graph.app_client.users}")
-        await graph.download_attachments()
-    finally:
-        await graph.close()
-    return
-    # await list_inbox(graph=graph)
-# </ProgramSnippet>
+    
+    token = None
+    m = None
+    messages = None
+    for recipient_id in RECIPIENTS_LIST:
+                messages = await graph.get_mails(recipient_id=recipient_id)
+                await graph.download_attachments(messages=messages, recipient_id=recipient_id)
+                print("\n" * 2)
+    # while True:
+    #     if not token:
+    #         token = await graph.get_app_only_token()
+    #     try:
+    #         for recipient_id in RECIPIENTS_LIST:
+    #             messages = await graph.get_mails(recipient_id=recipient_id)
+    #             await graph.download_attachments(messages=messages, recipient_id=recipient_id)
+    #             print("\n" * 2)
+    #     except Exception as e:
+    #         print(f"Exception occured: {e}")
+    #     print("\n" * 2)
+    #     sleep(5)
+        
+    # await graph.close()
+    # return
 
-# <GreetUserSnippet>
 async def greet_user(graph: Graph):
     user = await graph.get_user()
     if user:
@@ -41,13 +56,10 @@ async def greet_user(graph: Graph):
         # For Work/school accounts, email is in mail property
         # Personal accounts, email is in userPrincipalName
         print('Email:', user.mail or user.user_principal_name, '\n')
-# </GreetUserSnippet>
 
-# <ListInboxSnippet>
 async def list_inbox(graph: Graph):
     # message_page = await graph.get_inbox()
     await graph.download_attachments()
-# </ListInboxSnippet>
 
 # <SendMailSnippet>
 async def send_mail(graph: Graph):
@@ -59,12 +71,5 @@ async def send_mail(graph: Graph):
 
         await graph.send_mail('Testing Microsoft Graph', 'Hello world!', user_email or '')
         print('Mail sent.\n')
-# </SendMailSnippet>
 
-# <MakeGraphCallSnippet>
-async def make_graph_call(graph: Graph):
-    await graph.make_graph_call()
-# </MakeGraphCallSnippet>
-
-# Run main
 asyncio.run(main())
