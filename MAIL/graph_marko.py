@@ -19,12 +19,14 @@ from msgraph.generated.models.recipient import Recipient
 from msgraph.generated.models.email_address import EmailAddress
 from kiota_abstractions.base_request_configuration import RequestConfiguration
 
+# from email_reply_parser import EmailReplyParser
 from bs4 import BeautifulSoup
 import os
 import json
 import re 
 
 DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_DOWNLOAD')
+CLEANUP_SEPARATOR = "\n"
 
 def file_valid(attachment):
     # return attachment.additional_data.get("@odata.type") == "#microsoft.graph.fileAttachment" and \
@@ -33,16 +35,7 @@ def file_valid(attachment):
     attachment.name.endswith("pdf") or attachment.name.endswith("xlsx")
 
 def save_attachment(attachments):
-    # print("ENTERED SAVE ATTACHMENT")
     for a in attachments.value:
-        # print(f"Attachment: {a.name}")
-        # content_bytes = a.content_bytes
-        # odata_type = a.odata_type
-        # print(f"{odata_type=}")
-        # print(f"{a=}")
-        # print(f"{content_bytes}")
-        # json_data = json.loads(a)
-        # print(f"{json_data=}")
         if a.content_bytes and file_valid(a):
             file_bytes = base64.b64decode(a.content_bytes)
             with open(f"ATTS_DOWNLOAD/{a.name}", "wb") as f:
@@ -51,7 +44,7 @@ def save_attachment(attachments):
             print(f"Saved: {a.name}")
 
 def clean_body(body : str) -> str:
-    # print(f"DIRTY BODY: {body}")
+    # last_reply = EmailReplyParser.parse_reply(body)
     soup = BeautifulSoup(body, "html.parser")
 
     for img in soup.find_all("img"):
@@ -59,13 +52,15 @@ def clean_body(body : str) -> str:
 
     for sig in soup.find_all(attrs={"class": re.compile(r"signature|footer", re.I)}):
         sig.decompose()
-
-    text = soup.get_text(separator="\n").strip()
-    return re.sub('From?(.*?)Subject:', '', text, flags=re.DOTALL).strip()
+    text = soup.get_text(separator=CLEANUP_SEPARATOR, strip=True).strip()
+    result = re.split(r'(?im)^From:\r?\n.+\r?\nSent:\r?\n.+\r?\nTo:\r?\n.+\r?\nSubject:\r?\n.+(?:\r?\n|$)', text)
+    print(f"AFTER REGEX:\n{result}")
+    # result = re.sub('From?(.*?)Subject:', '', text, flags=re.DOTALL).strip().split(CLEANUP_SEPARATOR)[0]
+    return result[0].replace(CLEANUP_SEPARATOR, " ")
 
 class Mail:
     def __init__(self, message):
-        self.body = re.sub(r'\<[^>]*\>', '', message.body.content)
+        self.body = clean_body(message.body.content)
         self.sender = message.sender,
         self.subject = message.subject,
         self.attachments = [],
@@ -83,53 +78,11 @@ class Graph:
 
         self.client_credential = ClientSecretCredential(tenant_id, client_id, client_secret)
         self.app_client = GraphServiceClient(self.client_credential)
-# </UserAuthConfigSnippet>
 
     async def get_app_only_token(self):
         graph_scope = 'https://graph.microsoft.com/.default'
         access_token = await self.client_credential.get_token(graph_scope)
         return access_token.token
-    
-    # <GetUserTokenSnippet>
-    async def get_user_token(self):
-        graph_scopes = self.settings['graphUserScopes']
-        access_token = self.device_code_credential.get_token(graph_scopes)
-        return access_token.token
-    # </GetUserTokenSnippet>
-
-    # <GetUserSnippet>
-    async def get_user(self):
-        # Only request specific properties using $select
-        query_params = UserItemRequestBuilder.UserItemRequestBuilderGetQueryParameters(
-            select=['displayName', 'mail', 'userPrincipalName']
-        )
-
-        request_config = UserItemRequestBuilder.UserItemRequestBuilderGetRequestConfiguration(
-            query_parameters=query_params
-        )
-
-        user = await self.app_client.me.get(request_configuration=request_config)
-        return user
-    # </GetUserSnippet>
-
-    # <GetInboxSnippet>
-    async def get_inbox(self):
-        query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
-            # Only request specific properties
-            select=['from', 'isRead', 'receivedDateTime', 'subject', 'id'],
-            # Get at most 25 results
-            top=25,
-            # Sort by received time, newest first
-            orderby=['receivedDateTime DESC']
-        )
-        request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
-            query_parameters= query_params
-        )
-
-        messages = await self.app_client.me.mail_folders.by_mail_folder_id('inbox').messages.get(
-                request_configuration=request_config)
-        return messages
-    # </GetInboxSnippet>
 
     async def get_mails(self, recipient_id):
         query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
@@ -150,24 +103,14 @@ class Graph:
     async def download_attachments(self, messages, recipient_id): 
         for message in messages.value:
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
-            print(f"{clean_body(message.body.content)}")
+            # print(f"{clean_body(message.body.content)}")
+            cleaned_body = clean_body(message.body.content)
+            print(f"{cleaned_body=}")
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)
         return
 
-    async def get_users(self):
-        query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
-            select = ['displayName', 'id', 'mail'],
-            top = 25,
-            orderby= ['displayName']
-        )
-        request_config = UsersRequestBuilder.UsersRequestBuilderGetRequestConfiguration(
-            query_parameters=query_params
-        )
-        users = await self.app_client.users.get(request_configuration=request_config)
-        return users
-    # <SendMailSnippet>
     async def send_mail(self, subject: str, body: str, recipient: str):
         message = Message()
         message.subject = subject
