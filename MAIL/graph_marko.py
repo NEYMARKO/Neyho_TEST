@@ -26,7 +26,6 @@ import json
 import re 
 
 DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_DOWNLOAD')
-CLEANUP_SEPARATOR = "\n"
 
 def file_valid(attachment):
     # return attachment.additional_data.get("@odata.type") == "#microsoft.graph.fileAttachment" and \
@@ -43,20 +42,29 @@ def save_attachment(attachments):
                 f.close()
             print(f"Saved: {a.name}")
 
-def clean_body(body : str) -> str:
-    # last_reply = EmailReplyParser.parse_reply(body)
+def clean_body(body: str) -> str:
     soup = BeautifulSoup(body, "html.parser")
 
+    # 1. Remove inline images (signatures, tracking pixels, etc.)
     for img in soup.find_all("img"):
         img.decompose()
 
+    # 2. Remove signature/footer blocks if marked by class
     for sig in soup.find_all(attrs={"class": re.compile(r"signature|footer", re.I)}):
         sig.decompose()
-    text = soup.get_text(separator=CLEANUP_SEPARATOR, strip=True).strip()
-    result = re.split(r'(?im)^From:\r?\n.+\r?\nSent:\r?\n.+\r?\nTo:\r?\n.+\r?\nSubject:\r?\n.+(?:\r?\n|$)', text)
-    print(f"AFTER REGEX:\n{result}")
-    # result = re.sub('From?(.*?)Subject:', '', text, flags=re.DOTALL).strip().split(CLEANUP_SEPARATOR)[0]
-    return result[0].replace(CLEANUP_SEPARATOR, " ")
+
+    # 3. Find the first Outlook message header block
+    outlook_headers = soup.find_all("div", class_=re.compile(r"OutlookMessageHeader", re.I))
+    if outlook_headers:
+        # Chop the document at the first Outlook header
+        outlook_headers[0].decompose()
+
+    # 4. Now extract the top part as plain text
+    text = soup.get_text(separator=" ", strip=True)
+
+    text = re.sub('From:.*?Subject: ', '', text, flags=re.DOTALL)
+    return text
+
 
 class Mail:
     def __init__(self, message):
@@ -105,7 +113,7 @@ class Graph:
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
             # print(f"{clean_body(message.body.content)}")
             cleaned_body = clean_body(message.body.content)
-            print(f"{cleaned_body=}")
+            print(f"\n{cleaned_body=}")
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)
