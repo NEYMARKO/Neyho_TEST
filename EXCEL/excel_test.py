@@ -126,7 +126,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
         captured_undefined_codes = []
         row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
         print(f"{row=}")
-        print(f"{row_data=}")
+        # print(f"{row_data=}")
         if row_data:
             month_codes_input = []
             for i in range(starting_col, ending_col + 1):
@@ -152,6 +152,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
     batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(EXCEL_OUTPUT_PATH)
+    print(f"INSERTED {len(employees_data)} elements")
     return code_reports
 
 def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
@@ -183,8 +184,13 @@ def extract_date_from_name(file_name : str) -> tuple[str, str]:
 
 def main():
 
+    os.chdir('/')
+    os.chdir(INPUT_FOLDER_PATH)
+    files = os.listdir()
+    print(f"{files=}")
+
     excel_app = PyExcel()
-    wb = excel_app.openFile(EXCEL_INPUT_PATH)
+    wb = excel_app.openFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
     ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
     
     used_range = ws.UsedRange
@@ -197,12 +203,9 @@ def main():
     for i in range(1, col_count + 1):
         categories[i] = used_range.Cells(1, i).Value
 
-    excel_app.closeFile(EXCEL_INPUT_PATH)
+    excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
 
-    os.chdir('/')
-    os.chdir(INPUT_FOLDER_PATH)
-    files = os.listdir()
-    print(f"{files=}")
+    
     for file in files:
         file_path = f"{INPUT_FOLDER_PATH}/{file}"
         wb = excel_app.openFile(file_path=file_path)
@@ -231,7 +234,7 @@ def main():
     # for employee in employees:
     #     print(f"{employee.ID=}")
     # excel_app.closeFile(EXCEL_INPUT_PATH)
-
+    print("Sucessfully read all input")
     start_time = time.perf_counter()
     code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
     end_time = time.perf_counter()
