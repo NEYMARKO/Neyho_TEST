@@ -6,8 +6,11 @@ import base64
 from configparser import SectionProxy
 from azure.identity.aio import ClientSecretCredential
 from msgraph import GraphServiceClient
-from msgraph.generated.users.item.user_item_request_builder import UserItemRequestBuilder
-from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+from kiota_abstractions.request_information import RequestInformation
+from kiota_abstractions.method import Method
+from msgraph.generated.models.o_data_errors.o_data_error import ODataError
+
+from msgraph.generated.users.item.mail_folders.item.messages.delta.delta_get_response import DeltaGetResponse
 from msgraph.generated.users.item.mail_folders.item.messages.messages_request_builder import (
     MessagesRequestBuilder)
 from msgraph.generated.users.item.send_mail.send_mail_post_request_body import (
@@ -24,6 +27,7 @@ from bs4 import BeautifulSoup
 import os
 import json
 import re 
+import requests
 
 DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_DOWNLOAD')
 
@@ -92,28 +96,43 @@ class Graph:
         access_token = await self.client_credential.get_token(graph_scope)
         return access_token.token
 
-    async def get_mails(self, recipient_id):
+    async def get_mails(self, recipient_id, delta_url=None):
         query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
             select = ['sender', 'subject', 'hasAttachments', 'body'],
-            top = 1,
-            orderby=['receivedDateTime DESC']
+            # top = 5,
+            # orderby=['receivedDateTime DESC']
         )
         request_configuration = RequestConfiguration(
             query_parameters=query_params
         )
         # request_configuration.headers.add("Prefer", f"outlook.body-content-type=\"text\"")
+        if delta_url:
+            request_info = RequestInformation()
+            request_info.url_template = delta_url
+            request_info.http_method = Method.GET
+            error_map = {
+                "4XX": ODataError,
+                "5XX": ODataError
+            }
+            # token = await self.get_app_only_token()
+            # headers = {"Authorization:" f"Bearer {token}"}
+            # return requests.get(delta_url, headers=headers)
+            return await self.app_client.request_adapter.send_async(request_info, DeltaGetResponse, error_map)
         messages = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
-        by_mail_folder_id('inbox').messages.get(
+        by_mail_folder_id('inbox').messages.delta.get(
             request_configuration
         )
         return messages
 
     async def download_attachments(self, messages, recipient_id): 
+        # print(f"DELTA: {messages.odata_delta_link}")
+
         for message in messages.value:
+            print(f"SUBJECT: {message.subject}")
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
             # print(f"{clean_body(message.body.content)}")
             cleaned_body = clean_body(message.body.content)
-            print(f"\n{cleaned_body=}")
+            # print(f"{cleaned_body=}\n")
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)

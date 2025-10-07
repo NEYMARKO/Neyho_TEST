@@ -27,12 +27,26 @@ async def main():
     graph: Graph = Graph(azure_settings)
     
     token = None
-    m = None
-    messages = None
+    delta_link = "https://graph.microsoft.com/v1.0/users/b247c66a-2651-4ff9-a6a1-858a24f30387/mailFolders('inbox')/messages/delta?$deltatoken=rOXIXEHGV-4NmbPgJNYAPJ5lODJ_hjsDjQeFaQ_g6BjBK-n0fXwkIt3oMywwz8TIKpmAaY9zNuOF8zYukfSjJVpf3XQgNAC2SYK8-r0jTrUCTctatNbk_0CF8gQCddspxorq1MWD-kLBC8lfk3HAJIzQ8FjV4MDwP3Mvg28wo-bYZdgp0I6__fH4Sm9zYVJH.nHTEVjAmnDiEEPOE4fuGBws8C4EwIvy6LN6PFY40hOY"
+    # messages = await graph.get_mails(recipient_id=recipient_id)
+    # next_link = messages.odata_next_link
+    # if not next_link:
+    #     delta_link = messages.odata_delta_link
+
     for recipient_id in RECIPIENTS_LIST:
-                messages = await graph.get_mails(recipient_id=recipient_id)
-                await graph.download_attachments(messages=messages, recipient_id=recipient_id)
-                print("\n" * 2)
+                response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
+                next_link = response.odata_next_link
+                # print(f"NEXT LINK: {next_link}")
+                while(next_link):
+                    response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
+                    # print(f"{response=}")
+                    next_link = response.odata_next_link
+                    messages = response.value
+                # print(f"{messages=}")
+                # print(f"{messages=}")
+                    await graph.download_attachments(messages=response, recipient_id=recipient_id)
+                delta_link = response.odata_delta_link
+    print(f"Delta link: {delta_link}")
     # while True:
     #     if not token:
     #         token = await graph.get_app_only_token()
@@ -46,7 +60,7 @@ async def main():
     #     print("\n" * 2)
     #     sleep(5)
         
-    # await graph.close()
+    await graph.close()
     # return
 
 async def greet_user(graph: Graph):
