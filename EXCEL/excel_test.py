@@ -4,23 +4,28 @@ from excel import PyExcel
 import time
 # import pyautogui
 
-INPUT_FOLDER = "INPUT"
+INPUT_FOLDER = "INPUT_8"
 INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
-EXCEL_INPUT_FILE = "DS_06_2025_168_BB.xlsx"
-EXCEL_INPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_INPUT_FILE)
-EXCEL_OUTPUT_FILE = "Hospira evidencije rada 06-2025.xlsm"
-EXCEL_OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_OUTPUT_FILE)
-EXCEL_REPORTS_FILE = "Reports.xlsx"
-EXCEL_REPORTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_REPORTS_FILE)
+OUTPUT_FOLDER = "OUTPUT_8"
+OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
+
+MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/ADP_Hospira evidencija rada (prazna) 08-2025.xlsm"
+# MASTER_TABLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MASTER_TABLE_FILE)
+
+REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
+# REPORTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), REPORTS_FILE)
 # excel = win32.gencache.EnsureDispatch('Excel.Application')
 # excel.Visible = True
 
 OUTPUT_FILE_HEADER_ROW = 2
 UNDEFINED_CODE_MESSAGE = "Navedena šifra se ne poklapa sa listom šifri, molim provjeru."
+CODES_MAPPING = {'BO': 'BO-AO', 'J+3': 'J-PR3', 'J+4': 'J-PR4', 'J4': 'J-PR4', 'NER': 'DO', 'PR-P8': 'PR-O8', 'U': 'J'}
+
 class Employee:
     
     def __init__(self, row : dict) -> None:
         self.ID = row.get('Employee ID', '')
+        self.organization_name = row.get('Organization name', '')
         self.organization_unit = row.get('Organization unit', '')
         self.first_name = row.get('First name', '')
         self.last_name = row.get('Surname', '')
@@ -99,7 +104,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
     """
     Fills master table and returns code reports as result.
     """
-    wb = excel_app.openFile(EXCEL_OUTPUT_PATH)
+    wb = excel_app.openFile(MASTER_TABLE_PATH)
     ws = excel_app.resolveSheet("Evidencija", wb.Name)
     used_range = ws.UsedRange
     columns_count = ws.UsedRange.Columns.Count
@@ -121,7 +126,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
     validation_cache = []
     code_reports = []
 
-    month, year = extract_date_from_name(EXCEL_OUTPUT_FILE)
+    month, year = extract_date_from_name(MASTER_TABLE_PATH)
     for employee in employees_data:
         captured_undefined_codes = []
         row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
@@ -133,31 +138,36 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
                 cell = used_range.Cells(row, i)
                 #i - starting_col because loop starts from starting_col => list items are in range [0, len(list)]
                 code = employee.monthly_data[i - starting_col]
+                code = code if not code else code.upper().strip()
                 if not validation_cache:
                     validation_cache = extract_values_from_validation(validation_formula=cell.Validation.Formula1, wb=wb)
-                if code and code not in validation_cache:
+                mapped_code = CODES_MAPPING.get(code, None)
+                if code and (code not in validation_cache and mapped_code not in validation_cache):
                     month_codes_input.append(None)
                     # if code not in captured_undefined_codes:
                     captured_undefined_codes.append(code)
                     # + 1 because it is starting from 1, not from 0 (first day in month has value
                     # of 1, not 0) 
                     date = f"{"0" if (i - starting_col + 1) < 10 else ""}{i-starting_col + 1}.{month}.{year}"
-                    code_reports.append({"Šifra": code, "Datum": date, "Employee ID": employee.ID, "Organization Name": employee.organization_unit, "Komentar": UNDEFINED_CODE_MESSAGE})
+                    code_reports.append({"Šifra": code, "Datum": date, "Employee ID": employee.ID, 
+                                         "Name": employee.first_name, "Surname": employee.last_name, 
+                                         "Organization Name": employee.organization_name, "Organization unit": employee.organization_unit, 
+                                         "Komentar": UNDEFINED_CODE_MESSAGE})
                     continue
-                month_codes_input.append(code)
+                month_codes_input.append(code if not mapped_code else mapped_code)
             row_tuple = (row, month_codes_input)
             data.append(row_tuple)
     # for report in code_reports:
     #     print(f"{report=}")
     batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
-    excel_app.closeFile(EXCEL_OUTPUT_PATH)
+    excel_app.closeFile(MASTER_TABLE_PATH)
     print(f"INSERTED {len(employees_data)} elements")
     return code_reports
 
 def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
 
-    wb = excel_app.openFile(EXCEL_REPORTS_PATH)
+    wb = excel_app.openFile(REPORTS_PATH)
     print("ALIGN SHEET NAME TO MATCH SHEET NAME FROM FILE")
     ws = excel_app.resolveSheet("Sheet1", wb.Name)
     used_range = ws.UsedRange
@@ -171,10 +181,11 @@ def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
         row += 1
         target_range.Value = data_2d
     wb.Save()
-    excel_app.closeFile(EXCEL_REPORTS_PATH)
+    excel_app.closeFile(REPORTS_PATH)
     return
 
-def extract_date_from_name(file_name : str) -> tuple[str, str]:
+def extract_date_from_name(file_path : str) -> tuple[str, str]:
+    file_name = os.path.basename(file_path)
     l = file_name.split(" ")
     for part in l:
         if ("-") in part:
