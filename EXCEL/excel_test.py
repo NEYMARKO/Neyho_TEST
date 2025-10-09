@@ -4,12 +4,12 @@ from excel import PyExcel
 import time
 # import pyautogui
 
-INPUT_FOLDER = "INPUT_8"
+INPUT_FOLDER = "INPUT_6"
 INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
-OUTPUT_FOLDER = "OUTPUT_8"
+OUTPUT_FOLDER = "OUTPUT_6"
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
 
-MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/ADP_Hospira evidencija rada (prazna) 08-2025.xlsm"
+MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira evidencije rada 06-2025.xlsm"
 # MASTER_TABLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MASTER_TABLE_FILE)
 
 REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
@@ -27,10 +27,10 @@ class Employee:
         self.ID = row.get('Employee ID', '')
         self.organization_name = row.get('Organization name', '')
         self.organization_unit = row.get('Organization unit', '')
-        self.first_name = row.get('First name', '')
+        self.first_name = row.get('First Name', 'BLA-LA')
         self.last_name = row.get('Surname', '')
         self.monthly_data = row.get('monthly_data', '')
-    
+        
     def struct_data(self) -> list[str]:
         return [self.ID, self.organization_unit, self.first_name, self.last_name, self.monthly_data]
 
