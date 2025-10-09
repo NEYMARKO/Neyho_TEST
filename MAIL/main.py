@@ -28,7 +28,8 @@ async def main():
     
     token = None
     # delta_link = "https://graph.microsoft.com/v1.0/users/b247c66a-2651-4ff9-a6a1-858a24f30387/mailFolders('inbox')/messages/delta?$deltatoken=rOXIXEHGV-4NmbPgJNYAPD06A6JFWLlafepI_1Zd28PoUY51AElZ2CvNWFM94zfykbxIwpbp7NnTJS7Dx6viWVmVW9eVr5rIJTDx8cYURLeCxxSKMQRMqE_syJWvmnoJkCezLM3RZ4r7eHkNm4wOzQVVo_JZx91HGbkohai-anaGCnmfLR5xJiGar8K_3-EG.6x9CO2Zf-F_05ZksvN4smTFhxkwaCUwFMdKnO2K0BdA"
-    delta_link = "https://graph.microsoft.com/v1.0/users/b247c66a-2651-4ff9-a6a1-858a24f30387/mailFolders('inbox')/messages/delta?$deltatoken=rOXIXEHGV-4NmbPgJNYAPLpWZR-uRNwmg1Nyk8iuzzF8g7z3kcp9CEkprHfC7BZCtQ7yxWCxjEKxb_tu7VhbU3mlcf_99s_G00Dv6lsljJnQQdWsQI-4NHZBCjBgcoq6QAIwBdU1XUuCblq2ohbx7qgRuR8XRS5SwD6VUou1xi2aIiY3m664A-ONw8I4py5v.y5-mnvhep3ELmLUTTfH2Ew4BaYBSDI6RPApV_rzqbOo"
+    # delta_link = "https://graph.microsoft.com/v1.0/users/b247c66a-2651-4ff9-a6a1-858a24f30387/mailFolders('inbox')/messages/delta?$deltatoken=rOXIXEHGV-4NmbPgJNYAPLpWZR-uRNwmg1Nyk8iuzzF8g7z3kcp9CEkprHfC7BZCtQ7yxWCxjEKxb_tu7VhbU3mlcf_99s_G00Dv6lsljJnQQdWsQI-4NHZBCjBgcoq6QAIwBdU1XUuCblq2ohbx7qgRuR8XRS5SwD6VUou1xi2aIiY3m664A-ONw8I4py5v.y5-mnvhep3ELmLUTTfH2Ew4BaYBSDI6RPApV_rzqbOo"
+    delta_link = "https://graph.microsoft.com/v1.0/users/b247c66a-2651-4ff9-a6a1-858a24f30387/mailFolders('inbox')/messages/delta?$deltatoken=GpfmEUfGTQLKhYJrytuF2ojdptZhXElRlhw_qDYO9ACxNqVz-4Dymf2y6qgJxG7FnipVDsiewXPjK--TCxdP13jvdp_Y-rmxrp_L_-hXfRZQ8vzhP1oTeWsnn-AWH6KQZXpZNt-e_n45PVj6Uxagoc2RDSRy540emJl429gb3gG2w7ZhE-wLTYgOHpx32T4s.LsHuBxpthRNwsIZJXSEv6QxPjIiIdddgND8LPShwcKE"
     # delta_link = None
     # messages = await graph.get_mails(recipient_id=recipient_id)
     # next_link = messages.odata_next_link

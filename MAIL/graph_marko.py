@@ -13,31 +13,21 @@ from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from msgraph.generated.users.item.mail_folders.item.messages.delta.delta_get_response import DeltaGetResponse
 from msgraph.generated.users.item.mail_folders.item.messages.messages_request_builder import (
     MessagesRequestBuilder)
-from msgraph.generated.users.item.send_mail.send_mail_post_request_body import (
-    SendMailPostRequestBody)
-from msgraph.generated.models.message import Message
-from msgraph.generated.models.item_body import ItemBody
-from msgraph.generated.models.body_type import BodyType
-from msgraph.generated.models.recipient import Recipient
-from msgraph.generated.models.email_address import EmailAddress
 from kiota_abstractions.base_request_configuration import RequestConfiguration
 
-# from email_reply_parser import EmailReplyParser
 from bs4 import BeautifulSoup
 import os
-import json
 import re 
-import requests
 
 DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_DOWNLOAD')
 
 def file_valid(attachment):
     # return attachment.additional_data.get("@odata.type") == "#microsoft.graph.fileAttachment" and \
     # (attachment.name.endswith("pdf") or attachment.name.endswith("xlsx"))
-    print(f"ATTACHMENT: {attachment}\n")
+    # print(f"ATTACHMENT: {attachment}\n")
     return attachment.odata_type == "#microsoft.graph.fileAttachment" and\
-    attachment.name.endswith("pdf") or attachment.name.endswith("xlsx")
-    # not getattr(attachment, "isInline", True)
+    not attachment.is_inline
+    # attachment.name.endswith("pdf") or attachment.name.endswith("xlsx")
 
 def save_attachment(attachments):
     for a in attachments.value:
@@ -142,26 +132,6 @@ class Graph:
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)
         return
-
-    async def send_mail(self, subject: str, body: str, recipient: str):
-        message = Message()
-        message.subject = subject
-
-        message.body = ItemBody()
-        message.body.content_type = BodyType.Text
-        message.body.content = body
-
-        to_recipient = Recipient()
-        to_recipient.email_address = EmailAddress()
-        to_recipient.email_address.address = recipient
-        message.to_recipients = []
-        message.to_recipients.append(to_recipient)
-
-        request_body = SendMailPostRequestBody()
-        request_body.message = message
-
-        await self.app_client.me.send_mail.post(body=request_body)
-    # </SendMailSnippet>
 
     async def close(self):
         await self.client_credential.close()
