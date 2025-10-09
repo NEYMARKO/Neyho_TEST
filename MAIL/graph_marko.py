@@ -34,8 +34,10 @@ DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_D
 def file_valid(attachment):
     # return attachment.additional_data.get("@odata.type") == "#microsoft.graph.fileAttachment" and \
     # (attachment.name.endswith("pdf") or attachment.name.endswith("xlsx"))
-    return attachment.odata_type == "#microsoft.graph.fileAttachment" and \
+    print(f"ATTACHMENT: {attachment}\n")
+    return attachment.odata_type == "#microsoft.graph.fileAttachment" and\
     attachment.name.endswith("pdf") or attachment.name.endswith("xlsx")
+    # not getattr(attachment, "isInline", True)
 
 def save_attachment(attachments):
     for a in attachments.value:
@@ -52,7 +54,9 @@ def clean_body(body: str) -> str:
     # 1. Remove inline images (signatures, tracking pixels, etc.)
     for img in soup.find_all("img"):
         img.decompose()
-
+    
+    for link in soup.find_all("a"):
+        link.decompose()
     # 2. Remove signature/footer blocks if marked by class
     for sig in soup.find_all(attrs={"class": re.compile(r"signature|footer", re.I)}):
         sig.decompose()
@@ -66,7 +70,7 @@ def clean_body(body: str) -> str:
     # 4. Now extract the top part as plain text
     text = soup.get_text(separator=" ", strip=True)
 
-    text = re.sub('From:.*?Subject: ', '', text, flags=re.DOTALL)
+    text = re.sub(r'From:.*(?=\bSubject:)', '', text, flags=re.DOTALL)
     return text
 
 
@@ -127,11 +131,12 @@ class Graph:
     async def download_attachments(self, messages, recipient_id): 
         # print(f"DELTA: {messages.odata_delta_link}")
 
-        for message in messages.value:
-            print(f"SUBJECT: {message.subject}")
+        for message in messages:
+            print(f"SUBJECT: {message.subject}\n")
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
             # print(f"{clean_body(message.body.content)}")
             cleaned_body = clean_body(message.body.content)
+            print(f"{cleaned_body=}\n")
             # print(f"{cleaned_body=}\n")
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
