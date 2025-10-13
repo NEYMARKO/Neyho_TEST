@@ -8,6 +8,34 @@ async def post_request(url : str, headers : dict[str]) -> None:
     return
 
 # def create_custom_field()
+dropdown_ids_map = {
+        "sektor":
+        {
+            "field_id": "8028", "value_name": "Ostalo", "value_id": "27775"
+        },
+        "regija":
+        {
+            "field_id": "11727", "value_name": "Zagreb", "value_id": "40131"
+        },
+        "kanal": 
+        {
+            "field_id": "11793", "value_name": "WEB", "value_id": "40318"
+        },
+        "status":
+        {
+            "field_id": "11795", "value_name": "Deals", "value_id": "40321"
+        },
+        "prihodi":
+        {
+            "field_id": "11797", "value_name": "< 2mn ", "value_id": "40323",     
+        },
+        "usluga": {
+            "field_id": "34302", "value_name": "Računovodstvo", "value_id": "111117"
+        },
+        "Broj usluga": {
+            "field_id": "75463", "value_name": "Jedna usluga", "value_id": "257767"
+        },
+    }
 
 def create_company(company_info : dict) -> None:
     
@@ -85,7 +113,8 @@ async def main():
     company_info = {'name': 'TestNeyho.d.o.o', 'default_currency': 'EUR',
                     'full_name': 'TestNeyho.d.o.o', 'tax_id': 11223344556,
                     }
-    response = requests.get(f'{endpoint_url}/custom_fields/34302?include=options', headers)
+    response = requests.get(f'{endpoint_url}/custom_fields/75463?include=options', headers)
+    # response = requests.get(f'{endpoint_url}/companies?include=options', headers)
     # create_company(company_info=company_info)
     print(f"Response: {response.json()}")
     # if response.status_code == 200:
