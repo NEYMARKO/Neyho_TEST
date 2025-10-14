@@ -75,28 +75,22 @@ def create_company(company_info : dict, headers : dict) -> str:
     print(f'Company creation response:\n{response}')
     return response.get('data', {}).get('id', '')
 
-def create_contact(person_id : str, company_id : str, email : str) -> None:
+def create_contact(person_id : str, email : str, headers : dict) -> None:
 
     body = {
         "data": {
             "type": "contact_entries",
             "attributes": {
-                "contactable_type": "person",
-                "type": "email",
+                "contactable_type": "person",  # Capital P
+                "type": "email",  # Capital E
                 "name": "Work",
-                "email": f'{email}'
-                },
+                "email": email
+            },
             "relationships": {
                 "person": {
                     "data": {
                         "type": "people",
-                        "id": f'{person_id}'
-                    }
-                },
-                "company": {
-                    "data": {
-                        "type": "companies",
-                        "id": f'{company_id}'
+                        "id": person_id
                     }
                 }
             }
@@ -106,20 +100,50 @@ def create_contact(person_id : str, company_id : str, email : str) -> None:
     print(f'Contact entries response:\n{response}')
     return
 
-def create_person(first_name : str, last_name : str, headers: dict) -> str:
+def create_person(first_name : str, last_name : str, email : str, company_id : str, headers: dict) -> None:
 
     body = {
         "data": {
             "type": "people",
             "attributes": {
                 "first_name": first_name,
-                "last_name": last_name
+                "last_name": last_name,
+                "email": email
+            },
+            "relationships": {
+                "company": {
+                    "data": {
+                        "type": "companies",
+                        "id": company_id
+                    }
+                }
             }
         }
     }
     response = requests.post(f'{endpoint_url}/people', headers=headers, json=body).json()
     print(f'Person creation response:\n{response}')
-    return response.get('data', {}).get('id', '')
+    # return response.get('data', {}).get('id', '')
+    return
+
+def link_person_to_company(person_id : str, company_id : str, headers : dict) -> None:
+    body = {
+        "data": {
+            "type": "people",
+            "id": person_id,
+            "relationships": {
+                "company": {
+                    "data": {
+                        "type": "companies",
+                        "id": company_id
+                    }
+                }
+            }
+        }
+    }
+    
+    response = requests.patch(f'{endpoint_url}/people/{person_id}', headers=headers, json=body).json()
+    print(f'Person update response:\n{response}')
+    return
 
 async def main():
 
@@ -144,16 +168,22 @@ async def main():
                     'full_name': 'TestNeyho.d.o.o', 'tax_id': 11223344556,
                     }
     # response = requests.get(f'{endpoint_url}/custom_fields/75463?include=options', headers)
-    response = requests.get(f'{endpoint_url}/people', headers)
-    print(response.json())
+    # response = requests.get(f'{endpoint_url}/people', headers)
+    # print(response.json())
     
     company_id = create_company(company_info=company_info, headers=headers)
-    person_id = create_person("Neyho_first", "Neyho_last", headers)
-    contact_id = create_contact(person_id, company_id)
+    # company_id = 1170573
+    # print(f"Company id: {company_id}")
+    create_person("TEST_NEYHOmarko", "TEST_NEYHOprso", "TEST_NEYHO@neyho.com", company_id, headers)
+    # link_person_to_company(person_id, company_id, headers)
+    # person_id = 1083219
+    # create_contact(person_id, "neyho5@neyho.com", headers)
     # response = requests.get(f'{endpoint_url}/custom_fields/11948?include=options', headers)
-    
-    print("About to send")
-    print("Sent")
+    # response = requests.get(f'{endpoint_url}/contact_entries/3536716?include=person,company', headers)
+    # print(response.json())
+
+    # print("About to send")
+    # print("Sent")
     # print(f"Response: {response.json()}")
     # if response.status_code == 200:
     #     print(response.json())
