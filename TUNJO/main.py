@@ -4,10 +4,6 @@ import requests
 
 endpoint_url = "https://api.productive.io/api/v2"
 
-async def post_request(url : str, headers : dict[str]) -> None:
-    return
-
-# def create_custom_field()
 dropdown_ids_map = {
         "sektor":
         {
@@ -75,32 +71,7 @@ def create_company(company_info : dict, headers : dict) -> str:
     print(f'Company creation response:\n{response}')
     return response.get('data', {}).get('id', '')
 
-def create_contact(person_id : str, email : str, headers : dict) -> None:
-
-    body = {
-        "data": {
-            "type": "contact_entries",
-            "attributes": {
-                "contactable_type": "person",  # Capital P
-                "type": "email",  # Capital E
-                "name": "Work",
-                "email": email
-            },
-            "relationships": {
-                "person": {
-                    "data": {
-                        "type": "people",
-                        "id": person_id
-                    }
-                }
-            }
-        }
-    }
-    response = requests.post(f'{endpoint_url}/contact_entries', headers=headers, json=body).json()
-    print(f'Contact entries response:\n{response}')
-    return
-
-def create_person(first_name : str, last_name : str, email : str, company_id : str, headers: dict) -> None:
+def create_person(first_name : str, last_name : str, email : str, company_id : str, headers: dict) -> str:
 
     body = {
         "data": {
@@ -122,27 +93,50 @@ def create_person(first_name : str, last_name : str, email : str, company_id : s
     }
     response = requests.post(f'{endpoint_url}/people', headers=headers, json=body).json()
     print(f'Person creation response:\n{response}')
-    # return response.get('data', {}).get('id', '')
-    return
+    return response.get('data', {}).get('id', '')
 
-def link_person_to_company(person_id : str, company_id : str, headers : dict) -> None:
+def create_deal(user_id : str, company_id : str, deal_name : str, headers : dict) -> None:
+    print(f"User id: {user_id}, company id: {company_id}")
     body = {
         "data": {
-            "type": "people",
-            "id": person_id,
+            "type": "deals",
+            "attributes": {
+                "name": deal_name,
+                # "date": "2025-10-14",
+                # "date": "2025-10-14T00:00:00Z",
+                "date": "2025-10-14T00:00:00+00:00",
+                "deal_type_id": 2,
+                "deal_status_id": 150458,
+                "probability": 50,
+                "currency": "EUR",
+                # "deal_status_id": 1,
+                "budget": False,
+                "custom_fields": {
+                    "9410": ["32690"],
+                    "11948": "40797"
+                },
+                "responsible": user_id,
+                "company_id": company_id
+            },
             "relationships": {
                 "company": {
                     "data": {
-                        "type": "companies",
+                        "type": "compaines",
                         "id": company_id
+                    }
+                },
+                "responsible": {
+                    "data": {
+                        "type": "users",
+                        "id": user_id
                     }
                 }
             }
         }
     }
-    
-    response = requests.patch(f'{endpoint_url}/people/{person_id}', headers=headers, json=body).json()
-    print(f'Person update response:\n{response}')
+    # print(body)
+    response = requests.post(f'{endpoint_url}/deals', headers=headers, json=body).json()
+    print(f'Deal creation response:\n{response}')
     return
 
 async def main():
@@ -171,10 +165,20 @@ async def main():
     # response = requests.get(f'{endpoint_url}/people', headers)
     # print(response.json())
     
-    company_id = create_company(company_info=company_info, headers=headers)
+    # company_id = create_company(company_info=company_info, headers=headers)
+    company_id = "1170610"
+    
     # company_id = 1170573
     # print(f"Company id: {company_id}")
-    create_person("TEST_NEYHOmarko", "TEST_NEYHOprso", "TEST_NEYHO@neyho.com", company_id, headers)
+    
+    # person_id = create_person("TEST_NEYHOmarko", "TEST_NEYHOprso", "TEST_NEYHO@neyho.com", company_id, headers)
+    user_id = "232675"
+    # user_id = "65816"
+
+    # response = requests.get(f'{endpoint_url}/people', headers)
+    # print(response.json())
+
+    create_deal(user_id, company_id, 'RAC_' + company_info.get('full_name', ''), headers)
     # link_person_to_company(person_id, company_id, headers)
     # person_id = 1083219
     # create_contact(person_id, "neyho5@neyho.com", headers)
