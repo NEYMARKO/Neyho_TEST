@@ -37,7 +37,19 @@ dropdown_ids_map = {
         },
     }
 
-def create_company(company_info : dict) -> None:
+deals_map = {
+    "usluga":
+    {
+        "field_id": "9410", "value_name": "Računovodstvo", "value_id": "32690"
+    },
+    "kanal":
+    {
+        "field_id": "11948", "value_name": "WEB", "value_id": "40797"
+    },
+
+}
+
+def create_company(company_info : dict, headers : dict) -> str:
     
     body = {
         "data": {
@@ -47,49 +59,67 @@ def create_company(company_info : dict) -> None:
                 "default_currency": f'{company_info.get('default_currency')}',
                 "billing_name": f'{company_info.get('full_name')}',
                 "vat": f'{company_info.get('tax_id')}',
-                "custom_fields":
-                    {
+                "custom_fields": {
+                    "8028": "27775",
+                    "11727": "40131",
+                    "11793": "40318",
+                    "11795": "40321",
+                    "11797": "40323",
+                    "34302": ["111117"],
+                    "75463": "257767"
+                },
+            }
+        }
+    }
+    response = requests.post(f'{endpoint_url}/companies', headers=headers, json=body).json()
+    print(f'Company creation response:\n{response}')
+    return response.get('data', {}).get('id', '')
 
-                    },
-                "tag_list": [
-                    "partner",
-                    "priority"
-                ],
-                "buyer_reference": "BUYER123",
-                "contact": {
-                    "phones": [
-                        {
-                            "name": "Contact phone",
-                            "phone": "(555) 123-4567"
-                        }
-                ],
-                "emails": [
-                    {
-                        "name": "Email",
-                        "email": "contact@exmaple.com"
+def create_contact(person_id : str, company_id : str, email : str) -> None:
+
+    body = {
+        "data": {
+            "type": "contact_entries",
+            "attributes": {
+                "contactable_type": "person",
+                "type": "email",
+                "name": "Work",
+                "email": f'{email}'
+                },
+            "relationships": {
+                "person": {
+                    "data": {
+                        "type": "people",
+                        "id": f'{person_id}'
                     }
-                ],
-                "websites": [
-                    {
-                        "name": "Official website",
-                        "website": "example-website.com"
+                },
+                "company": {
+                    "data": {
+                        "type": "companies",
+                        "id": f'{company_id}'
                     }
-                ],
-                "addresses": [
-                        {
-                            "name": "Headquarters",
-                            "billing_address": "Main Street",
-                            "city": "City",
-                            "state": "State",
-                            "zipcode": "11111",
-                            "country": "Country"
-                        }
-                    ]
                 }
             }
         }
     }
+    response = requests.post(f'{endpoint_url}/contact_entries', headers=headers, json=body).json()
+    print(f'Contact entries response:\n{response}')
     return
+
+def create_person(first_name : str, last_name : str, headers: dict) -> str:
+
+    body = {
+        "data": {
+            "type": "people",
+            "attributes": {
+                "first_name": first_name,
+                "last_name": last_name
+            }
+        }
+    }
+    response = requests.post(f'{endpoint_url}/people', headers=headers, json=body).json()
+    print(f'Person creation response:\n{response}')
+    return response.get('data', {}).get('id', '')
 
 async def main():
 
@@ -113,10 +143,18 @@ async def main():
     company_info = {'name': 'TestNeyho.d.o.o', 'default_currency': 'EUR',
                     'full_name': 'TestNeyho.d.o.o', 'tax_id': 11223344556,
                     }
-    response = requests.get(f'{endpoint_url}/custom_fields/75463?include=options', headers)
-    # response = requests.get(f'{endpoint_url}/companies?include=options', headers)
-    # create_company(company_info=company_info)
-    print(f"Response: {response.json()}")
+    # response = requests.get(f'{endpoint_url}/custom_fields/75463?include=options', headers)
+    response = requests.get(f'{endpoint_url}/people', headers)
+    print(response.json())
+    
+    company_id = create_company(company_info=company_info, headers=headers)
+    person_id = create_person("Neyho_first", "Neyho_last", headers)
+    contact_id = create_contact(person_id, company_id)
+    # response = requests.get(f'{endpoint_url}/custom_fields/11948?include=options', headers)
+    
+    print("About to send")
+    print("Sent")
+    # print(f"Response: {response.json()}")
     # if response.status_code == 200:
     #     print(response.json())
 
