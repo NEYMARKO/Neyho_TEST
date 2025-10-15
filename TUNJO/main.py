@@ -16,6 +16,14 @@ def create_company(company_info : dict, custom_fields: dict, headers : dict) -> 
                 "billing_name": f'{company_info.get('full_name')}',
                 "vat": f'{company_info.get('tax_id')}',
                 "custom_fields": custom_fields,
+                "contact": {
+                    "phones": [
+                        {
+                            "name": "Contact phone",
+                            "phone": company_info.get('phone_number')
+                        }
+                    ]
+                }
             }
         }
     }
@@ -101,7 +109,7 @@ async def main():
     company_custom_fields[config['company_custom_fields_ids']['usluga_id']] = [config['company_custom_values_ids']['usluga_id']]
 
     company_info = {'name': 'TestNeyho.d.o.o', 'default_currency': 'EUR',
-                    'full_name': 'TestNeyho.d.o.o', 'tax_id': 11223344556,
+                    'full_name': 'TestNeyho.d.o.o', 'tax_id': 11223344556, "phone_number": "+385990100203"
                     }
 
     company_id = create_company(company_info, company_custom_fields, headers)
