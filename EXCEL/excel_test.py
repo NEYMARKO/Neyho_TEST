@@ -228,7 +228,7 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
         "popodne": "p",
         "noć": "n",
         "očinski": "bo-od",
-        "ništa": None
+        "ništa": "n/a"
     }
     result = {}
     for i in range(len(data)):
@@ -313,11 +313,11 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             print(f"Unable to enter cumulatives for employee: {e.ID} - person not in table")
             continue
         for i in range(len(e.monthly_data)):
-            day_data = e.monthly_data[i] if not e.monthly_data[i] else e.monthly_data[i].lower()
+            day_data = "n/a" if not e.monthly_data[i] else e.monthly_data[i].lower()
             #doesn't matter if these days are made on holiday or sometime else
-            if not day_data or 'go' in day_data or 'bo' in day_data:
+            if day_data == "n/a" or 'go' in day_data or 'bo' in day_data:
                 #mapping to [0, len(dict)-1] range
-                col = packed_column_header_codes[frozenset(set(day_data))] - CUMULATIVE_STARTING_COL
+                col = packed_column_header_codes[frozenset(set([day_data]))] - CUMULATIVE_STARTING_COL
                 # employee_cumulatives[col] = 8 if not employee_cumulatives[col] else employee_cumulatives[col] + 8 
                 employee_cumulatives[col] += 8 
                 continue
@@ -366,42 +366,42 @@ def main():
     excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
 
     
-    # for file in files:
-    #     file_path = f"{INPUT_FOLDER_PATH}/{file}"
-    #     wb = excel_app.openFile(file_path=file_path)
-    #     ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
+    for file in files:
+        file_path = f"{INPUT_FOLDER_PATH}/{file}"
+        wb = excel_app.openFile(file_path=file_path)
+        ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
 
-    #     used_range = ws.UsedRange
-    #     row_count = used_range.Rows.Count
-    #     col_count = used_range.Columns.Count
+        used_range = ws.UsedRange
+        row_count = used_range.Rows.Count
+        col_count = used_range.Columns.Count
 
-    #     for i in range(2, row_count + 1):
-    #         row_values = {}
-    #         monthly_data = []
+        for i in range(2, row_count + 1):
+            row_values = {}
+            monthly_data = []
 
-    #         if row_empty(row=i, col_cnt=col_count, ws=ws):
-    #             break
+            if row_empty(row=i, col_cnt=col_count, ws=ws):
+                break
 
-    #         for j in range(1, col_count + 1):
-    #             try:
-    #                 int(categories.get(j))
-    #                 monthly_data.append(used_range.Cells(i, j).Value)
-    #             except:
-    #                 row_values[categories.get(j)] = used_range.Cells(i, j).Value
-    #         row_values['monthly_data'] = monthly_data
-    #         employees.append(Employee(row=row_values))
-    #     excel_app.closeFile(file_path=file_path)
+            for j in range(1, col_count + 1):
+                try:
+                    int(categories.get(j))
+                    monthly_data.append(used_range.Cells(i, j).Value)
+                except:
+                    row_values[categories.get(j)] = used_range.Cells(i, j).Value
+            row_values['monthly_data'] = monthly_data
+            employees.append(Employee(row=row_values))
+        excel_app.closeFile(file_path=file_path)
     # for employee in employees:
     #     print(f"{employee.ID=}")
     # excel_app.closeFile(EXCEL_INPUT_PATH)
     print("Sucessfully read all input")
-    # start_time = time.perf_counter()
-    # code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
-    # end_time = time.perf_counter()
+    start_time = time.perf_counter()
+    code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
+    end_time = time.perf_counter()
 
-    # print(f"Insert lasted: {end_time - start_time}s")
+    print(f"Insert lasted: {end_time - start_time}s")
 
-    # fill_reports_table(excel_app, code_reports)
+    fill_reports_table(excel_app, code_reports)
 
     fill_cumulative_table(excel_app, employees)
 
