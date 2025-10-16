@@ -90,7 +90,7 @@ def extract_values_from_validation(validation_formula : any, wb : any) -> list[s
     except:
         print("No validation available")
 
-def batch_row_insert(row : int, start_col : int, end_col : int, data : list[str], ws : any) -> None:
+def batch_rows_insert(start_col : int, end_col : int, data : list[str], ws : any) -> None:
     used_range = ws.UsedRange
     for row, row_details in data:
         data_2d = [row_details]
@@ -174,7 +174,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
             data.append(row_tuple)
     # for report in code_reports:
     #     print(f"{report=}")
-    batch_row_insert(row=row, start_col=starting_col, end_col=ending_col, data=data, ws=ws)
+    batch_rows_insert(start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(MASTER_TABLE_PATH)
     print(f"INSERTED {len(employees_data)} elements")
@@ -248,6 +248,29 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
     print(f"{result=}")
     return result
 
+def disect_code(code : str) -> tuple[int, frozenset[set]]:
+    code_list = []
+    number = 0
+    try:
+        code_list = code.split("-")
+    except:
+        return (0, frozenset(set([code]))) 
+    for i in range(len(code_list)):
+        number_split = re.split("(\d+)", code_list[i])
+        if len(number_split) > 1:
+            code_list.remove(code_list[i])
+            i -= 1
+            try:
+                number = int(number_split[0])
+                code_list.append(number_split[1])
+            except:
+                number = int(number_split[1])
+                code_list.append(number_split[0])
+    code_set = set(code_list)
+    if '' in code_set:
+        code_set.remove('')
+    return (number, frozenset(code_set))
+
 def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> None:
     month, year = extract_date_from_name(MASTER_TABLE_PATH)
     saturdays = []
@@ -277,18 +300,26 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
     row = -1
     col = -1
 
-    employee_cumulatives = [None] * len(packed_column_header_codes)
+    # employee_cumulatives = [None] * len(packed_column_header_codes)
+    employee_cumulatives = [0] * len(packed_column_header_codes)
     insertion_data = []
 
     for e in employees_data:
         row = - 1
+        found_cell = used_range.Find(What=e.ID)
+        if found_cell:
+            row = found_cell.Row
+        if row == -1:
+            print(f"Unable to enter cumulatives for employee: {e.ID} - person not in table")
+            continue
         for i in range(len(e.monthly_data)):
             day_data = e.monthly_data[i] if not e.monthly_data[i] else e.monthly_data[i].lower()
             #doesn't matter if these days are made on holiday or sometime else
             if not day_data or 'go' in day_data or 'bo' in day_data:
                 #mapping to [0, len(dict)-1] range
                 col = packed_column_header_codes[frozenset(set(day_data))] - CUMULATIVE_STARTING_COL
-                employee_cumulatives[col] = 8 if not employee_cumulatives[col] else employee_cumulatives[col] + 8 
+                # employee_cumulatives[col] = 8 if not employee_cumulatives[col] else employee_cumulatives[col] + 8 
+                employee_cumulatives[col] += 8 
                 continue
             date = f'{i + 1} {month} {year}'
             dt = datetime.strptime(date, "%d %m %Y")
@@ -298,13 +329,14 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
                 day_data += f"-{SUNDAY_CODE}"
             if holidays_cro.get(dt.date(), ''):
                 day_data += f"-{HOLIDAY_CODE}"
+
+            overtime_hours, hashed_set = disect_code(day_data)
+            col = packed_column_header_codes[hashed_set] - CUMULATIVE_STARTING_COL
+            employee_cumulatives[col] += (overtime_hours + 8)
         
-        found_cell = used_range.Find(What=e.ID)
-        if found_cell:
-            row = found_cell.Row
-        if row != -1:
-            insertion_data.append((row, employee_cumulatives))
-        print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
+        insertion_data.append((row, employee_cumulatives))
+        # print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
+    batch_rows_insert(start_col=CUMULATIVE_STARTING_COL, end_col=columns_count, data=data, ws=ws)
     return
 
 def main():
