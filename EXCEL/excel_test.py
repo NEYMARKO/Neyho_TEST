@@ -30,6 +30,8 @@ HOLIDAY_CODE = "hol"
 SATURDAY_CODE = "sat"
 SUNDAY_CODE = "sun"
 
+CUMULATIVE_STARTING_COL = 4
+
 class Employee:
     
     def __init__(self, row : dict) -> None:
@@ -206,47 +208,9 @@ def extract_date_from_name(file_path : str) -> tuple[str, str]:
             return date[0], date[1].partition(".")[0]
     return
 
-def fill_cumulative_table(employees_data : list[Employee]) -> None:
-    month, year = extract_date_from_name(MASTER_TABLE_PATH)
-    saturdays = []
-    sundays = []
-    holidays_cro = holidays.country_holidays('HR', years=int(year))
-    # print(f'{holidays=}')
-    for i in range(len(employees_data[0].monthly_data)):
-        date = f'{i + 1} {month} {year}'
-        dt = datetime.strptime(date, "%d %m %Y")
-        if (dt.weekday() == 5):
-                saturdays.append(i)
-        elif (dt.weekday() == 6):
-                sundays.append(i)
-    
-    for e in employees_data:
-        for i in range(len(e.monthly_data)):
-            if not e.monthly_data[i] or e.monthly_data[i].lower() == 'go':
-                continue
-            date = f'{i + 1} {month} {year}'
-            dt = datetime.strptime(date, "%d %m %Y")
-            if i in saturdays:
-                e.monthly_data[i] += f"_{SATURDAY_CODE}"
-            elif i in sundays:
-                e.monthly_data[i] += f"_{SUNDAY_CODE}"
 
-            if holidays_cro.get(dt.date(), ''):
-                e.monthly_data[i] += f"_{HOLIDAY_CODE}"
+def pack_cumulative_columns(data : list[str]) -> dict[set]:
 
-        print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
-    return
-
-def pack_cumulative_columns(excel_app : any) -> dict[set]:
-    STARTING_COL = 4
-    SHEET_NAME = "Sumarno"
-    ACTIVE_ROW = 2
-    wb = excel_app.openFile(CUMULATIVES_PATH)
-    ws = excel_app.resolveSheet(SHEET_NAME, wb.Name)
-    used_range = ws.UsedRange
-    columns_count = used_range.Columns.Count
-
-    data = list(ws.Range(used_range.Cells(ACTIVE_ROW, STARTING_COL), used_range.Cells(ACTIVE_ROW, columns_count)).Value2[0])
     replacements = {
         "prekovremeno": "pr",
         "prv": "pr",
@@ -262,7 +226,9 @@ def pack_cumulative_columns(excel_app : any) -> dict[set]:
         "iii smjena": "n",
         "jutro" : "j",
         "popodne": "p",
-        "noć": "n"
+        "noć": "n",
+        "očinski": "bo-od",
+        "ništa": None
     }
     result = {}
     for i in range(len(data)):
@@ -278,8 +244,67 @@ def pack_cumulative_columns(excel_app : any) -> dict[set]:
         data[i] = pattern.sub(lambda m: replacements[m.group(0)], data[i].lower())
 
         data[i] = frozenset(set(data[i].split()))
-        result[data[i]] = STARTING_COL + i
+        result[data[i]] = CUMULATIVE_STARTING_COL + i
     print(f"{result=}")
+    return result
+
+def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> None:
+    month, year = extract_date_from_name(MASTER_TABLE_PATH)
+    saturdays = []
+    sundays = []
+    holidays_cro = holidays.country_holidays('HR', years=int(year))
+    # print(f'{holidays=}')
+    for i in range(len(employees_data[0].monthly_data)):
+        date = f'{i + 1} {month} {year}'
+        dt = datetime.strptime(date, "%d %m %Y")
+        if (dt.weekday() == 5):
+                saturdays.append(i)
+        elif (dt.weekday() == 6):
+                sundays.append(i)
+    
+
+    SHEET_NAME = "Sumarno"
+    ACTIVE_ROW = 2
+    wb = excel_app.openFile(CUMULATIVES_PATH)
+    ws = excel_app.resolveSheet(SHEET_NAME, wb.Name)
+    used_range = ws.UsedRange
+    columns_count = used_range.Columns.Count
+
+    data = list(ws.Range(used_range.Cells(ACTIVE_ROW, CUMULATIVE_STARTING_COL), used_range.Cells(ACTIVE_ROW, columns_count)).Value2[0])
+    packed_column_header_codes = pack_cumulative_columns(data)
+    
+    day_data = None
+    row = -1
+    col = -1
+
+    employee_cumulatives = [None] * len(packed_column_header_codes)
+    insertion_data = []
+
+    for e in employees_data:
+        row = - 1
+        for i in range(len(e.monthly_data)):
+            day_data = e.monthly_data[i] if not e.monthly_data[i] else e.monthly_data[i].lower()
+            #doesn't matter if these days are made on holiday or sometime else
+            if not day_data or 'go' in day_data or 'bo' in day_data:
+                #mapping to [0, len(dict)-1] range
+                col = packed_column_header_codes[frozenset(set(day_data))] - CUMULATIVE_STARTING_COL
+                employee_cumulatives[col] = 8 if not employee_cumulatives[col] else employee_cumulatives[col] + 8 
+                continue
+            date = f'{i + 1} {month} {year}'
+            dt = datetime.strptime(date, "%d %m %Y")
+            if i in saturdays:
+                day_data += f"-{SATURDAY_CODE}"
+            elif i in sundays:
+                day_data += f"-{SUNDAY_CODE}"
+            if holidays_cro.get(dt.date(), ''):
+                day_data += f"-{HOLIDAY_CODE}"
+        
+        found_cell = used_range.Find(What=e.ID)
+        if found_cell:
+            row = found_cell.Row
+        if row != -1:
+            insertion_data.append((row, employee_cumulatives))
+        print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
     return
 
 def main():
@@ -343,8 +368,7 @@ def main():
 
     # fill_reports_table(excel_app, code_reports)
 
-    pack_cumulative_columns(excel_app)
-    # fill_cumulative_table(employees)
+    fill_cumulative_table(excel_app, employees)
 
     excel_app.quit()
     return
