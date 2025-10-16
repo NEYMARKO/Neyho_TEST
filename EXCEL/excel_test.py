@@ -336,7 +336,7 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
         
         insertion_data.append((row, employee_cumulatives))
         # print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
-    batch_rows_insert(start_col=CUMULATIVE_STARTING_COL, end_col=columns_count, data=data, ws=ws)
+    batch_rows_insert(start_col=CUMULATIVE_STARTING_COL, end_col=columns_count, data=insertion_data, ws=ws)
     return
 
 def main():
