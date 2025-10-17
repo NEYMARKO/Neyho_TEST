@@ -17,7 +17,7 @@ MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira evidencije rada 06-2025.xlsm"
 
 REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
 
-CUMULATIVES_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira satnica.xlsm"
+CUMULATIVES_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira satnica - MARKO.xlsm"
 # REPORTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), REPORTS_FILE)
 # excel = win32.gencache.EnsureDispatch('Excel.Application')
 # excel.Visible = True
@@ -219,17 +219,10 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
         "nedjelja": SUNDAY_CODE,
         "blagdan": REL_HOLIDAY_CODE,
         "praznik": NAT_HOLIDAY_CODE,
-        "1. smjena": "j",
-        "2. smjena": "p",
-        "3. smjena": "n",
-        "i smjena": "j",
-        "ii smjena": "p",
-        "iii smjena": "n",
         "jutro" : "j",
         "popodne": "p",
-        "redovan rad": "",
-        "na": "",
         "noć": "n",
+        "preko 8 sati": "o",
         "očinski": "bo-od",
         "ništa": "n/a"
     }
@@ -244,9 +237,11 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
         => replacements[m.group(0)] looks up that workd in dictionary and sub replaces the match with 
         whatever lambda returns
         """
-        s = pattern.sub(lambda m: replacements[m.group(0)], data[i].lower())
-        print(f"DATA[I]: {data[i]} ||||||||| FOR STRING: {s}")
-        data[i] = frozenset(set(s.split()))
+        # s = pattern.sub(lambda m: replacements[m.group(0)], data[i].lower())
+        data[i] = pattern.sub(lambda m: replacements[m.group(0)], data[i].lower())
+        # print(f"DATA[I]: {data[i]} ||||||||| FOR STRING: {s}")
+        # data[i] = frozenset(set(s.split()))
+        data[i] = frozenset(set(data[i].split()))
         result[data[i]] = CUMULATIVE_STARTING_COL + i
     print(f"{result=}")
     return result
@@ -274,19 +269,22 @@ def disect_code(code : str) -> tuple[int, frozenset[set]]:
         code_set.remove('')
     return (number, frozenset(code_set))
 
+def is_special_code_case(code : str) -> bool:
+    return "do" in code or "go" in code or "pd" in code or "bo" in code
+
 def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> None:
     month, year = extract_date_from_name(MASTER_TABLE_PATH)
     saturdays = []
     sundays = []
     holidays_cro = holidays.country_holidays('HR', years=int(year))
     # print(f'{holidays=}')
-    # for i in range(len(employees_data[0].monthly_data)):
-    #     date = f'{i + 1} {month} {year}'
-    #     dt = datetime.strptime(date, "%d %m %Y")
-    #     if (dt.weekday() == 5):
-    #             saturdays.append(i)
-    #     elif (dt.weekday() == 6):
-    #             sundays.append(i)
+    for i in range(len(employees_data[0].monthly_data)):
+        date = f'{i + 1} {month} {year}'
+        dt = datetime.strptime(date, "%d %m %Y")
+        if (dt.weekday() == 5):
+                saturdays.append(i)
+        elif (dt.weekday() == 6):
+                sundays.append(i)
     
     religious_holidays = {
         "Epiphany",
@@ -316,6 +314,7 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
     columns_count = used_range.Columns.Count
 
     data = list(ws.Range(used_range.Cells(ACTIVE_ROW, CUMULATIVE_STARTING_COL), used_range.Cells(ACTIVE_ROW, columns_count)).Value2[0])
+    print(f"{data=}")
     packed_column_header_codes = pack_cumulative_columns(data)
     
     day_data = None
@@ -323,10 +322,11 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
     col = -1
 
     # employee_cumulatives = [None] * len(packed_column_header_codes)
-    employee_cumulatives = [0] * len(packed_column_header_codes)
+    
     insertion_data = []
 
     for e in employees_data:
+        employee_cumulatives = [0] * len(packed_column_header_codes)
         row = - 1
         found_cell = used_range.Find(What=e.ID)
         if found_cell:
@@ -337,12 +337,12 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
         for i in range(len(e.monthly_data)):
             day_data = "n/a" if not e.monthly_data[i] else e.monthly_data[i].lower()
             #doesn't matter if these days are made on holiday or sometime else
-            if day_data == "n/a" or 'go' in day_data or 'bo' in day_data:
+            if day_data == "n/a" or is_special_code_case(day_data):
                 #mapping to [0, len(dict)-1] range
                 col = packed_column_header_codes[frozenset(set([day_data]))] - CUMULATIVE_STARTING_COL
                 # employee_cumulatives[col] = 8 if not employee_cumulatives[col] else employee_cumulatives[col] + 8 
-                if col >= len(e.monthly_data):
-                    print(f"index of {frozenset(set([day_data]))} is: {col}")
+                # if col >= len(e.monthly_data):
+                #     print(f"index of {frozenset(set([day_data]))} is: {col}")
                 employee_cumulatives[col] += 8 
                 continue
             date = f'{i + 1} {month} {year}'
@@ -358,6 +358,7 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             elif holiday in national_holidays:
                 day_data += f"-{NAT_HOLIDAY_CODE}"
             overtime_hours, hashed_set = disect_code(day_data)
+            # print(f"employee {e.ID} at day: {i+1}")
             col = packed_column_header_codes[hashed_set] - CUMULATIVE_STARTING_COL
             employee_cumulatives[col] += (overtime_hours + 8)
         
@@ -377,61 +378,61 @@ def main():
     print(f"{files=}")
 
     excel_app = PyExcel()
-    # wb = excel_app.openFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
-    # ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
+    wb = excel_app.openFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
+    ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
     
-    # used_range = ws.UsedRange
-    # row_count = used_range.Rows.Count
-    # col_count = used_range.Columns.Count
+    used_range = ws.UsedRange
+    row_count = used_range.Rows.Count
+    col_count = used_range.Columns.Count
 
-    # employees = []
+    employees = []
     
-    # categories = {}
-    # for i in range(1, col_count + 1):
-    #     categories[i] = used_range.Cells(1, i).Value
+    categories = {}
+    for i in range(1, col_count + 1):
+        categories[i] = used_range.Cells(1, i).Value
 
-    # excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
+    excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
 
     
-    # for file in files:
-    #     file_path = f"{INPUT_FOLDER_PATH}/{file}"
-    #     wb = excel_app.openFile(file_path=file_path)
-    #     ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
+    for file in files:
+        file_path = f"{INPUT_FOLDER_PATH}/{file}"
+        wb = excel_app.openFile(file_path=file_path)
+        ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
 
-    #     used_range = ws.UsedRange
-    #     row_count = used_range.Rows.Count
-    #     col_count = used_range.Columns.Count
+        used_range = ws.UsedRange
+        row_count = used_range.Rows.Count
+        col_count = used_range.Columns.Count
 
-    #     for i in range(2, row_count + 1):
-    #         row_values = {}
-    #         monthly_data = []
+        for i in range(2, row_count + 1):
+            row_values = {}
+            monthly_data = []
 
-    #         if row_empty(row=i, col_cnt=col_count, ws=ws):
-    #             break
+            if row_empty(row=i, col_cnt=col_count, ws=ws):
+                break
 
-    #         for j in range(1, col_count + 1):
-    #             try:
-    #                 int(categories.get(j))
-    #                 monthly_data.append(used_range.Cells(i, j).Value)
-    #             except:
-    #                 row_values[categories.get(j)] = used_range.Cells(i, j).Value
-    #         row_values['monthly_data'] = monthly_data
-    #         employees.append(Employee(row=row_values))
-    #     excel_app.closeFile(file_path=file_path)
-    # # for employee in employees:
-    # #     print(f"{employee.ID=}")
-    # # excel_app.closeFile(EXCEL_INPUT_PATH)
-    # print("Sucessfully read all input")
-    # start_time = time.perf_counter()
-    # code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
-    # end_time = time.perf_counter()
+            for j in range(1, col_count + 1):
+                try:
+                    int(categories.get(j))
+                    monthly_data.append(used_range.Cells(i, j).Value)
+                except:
+                    row_values[categories.get(j)] = used_range.Cells(i, j).Value
+            row_values['monthly_data'] = monthly_data
+            employees.append(Employee(row=row_values))
+        excel_app.closeFile(file_path=file_path)
+    # for employee in employees:
+    #     print(f"{employee.ID=}")
+    # excel_app.closeFile(EXCEL_INPUT_PATH)
+    print("Sucessfully read all input")
+    start_time = time.perf_counter()
+    code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
+    end_time = time.perf_counter()
 
-    # print(f"Insert lasted: {end_time - start_time}s")
+    print(f"Insert lasted: {end_time - start_time}s")
 
-    # fill_reports_table(excel_app, code_reports)
+    fill_reports_table(excel_app, code_reports)
 
-    # fill_cumulative_table(excel_app, employees)
-    fill_cumulative_table(excel_app, [])
+    fill_cumulative_table(excel_app, employees)
+    # fill_cumulative_table(excel_app, [])
 
     excel_app.quit()
     return
