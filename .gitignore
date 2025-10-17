@@ -208,3 +208,9 @@ __marimo__/
 
 MAIL/ATTS_DOWNLOAD
 MAIL/config.cfg
+
+TUNJO/config.cfg
+TUNJO/*.json
+
+EXCEL/*/*.xlsx
+EXCEL/*/*.xlsm
