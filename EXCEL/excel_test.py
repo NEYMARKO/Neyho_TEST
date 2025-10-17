@@ -32,6 +32,7 @@ SATURDAY_CODE = "sat"
 SUNDAY_CODE = "sun"
 
 CUMULATIVE_STARTING_COL = 4
+OVERTIME_OVERFLOW = 24
 
 class Employee:
     
@@ -246,28 +247,37 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
     print(f"{result=}")
     return result
 
-def disect_code(code : str) -> tuple[int, frozenset[set]]:
+def disect_code(code : str) -> tuple[int, set[str]]:
     code_list = []
     number = 0
+    just_overtime = False
     try:
         code_list = code.split("-")
     except:
-        return (0, frozenset(set([code]))) 
+        return (0, set([code])) 
+    
+    try:
+        just_overtime = (code_list.index("pr") == 0)
+    except:
+        #'pr' is not in list (might have 'pr1' which will trigger error - needs to be only 'pr)
+        just_overtime = False
+
     for i in range(len(code_list)):
         number_split = re.split("(\d+)", code_list[i])
         if len(number_split) > 1:
             code_list.remove(code_list[i])
             i -= 1
             try:
-                number = int(number_split[0])
+                # number = int(number_split[0]) if (code_list.index("pr") == 0) else int(number_split[0]) + OVERTIME_OVERFLOW
+                number = int(number_split[0]) if just_overtime else int(number_split[0]) + OVERTIME_OVERFLOW
                 code_list.append(number_split[1])
             except:
-                number = int(number_split[1])
+                number = int(number_split[1]) if just_overtime else int(number_split[1]) + OVERTIME_OVERFLOW
                 code_list.append(number_split[0])
     code_set = set(code_list)
     if '' in code_set:
         code_set.remove('')
-    return (number, frozenset(code_set))
+    return (number, code_set)
 
 def is_special_code_case(code : str) -> bool:
     return "do" in code or "go" in code or "pd" in code or "bo" in code
@@ -314,7 +324,7 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
     columns_count = used_range.Columns.Count
 
     data = list(ws.Range(used_range.Cells(ACTIVE_ROW, CUMULATIVE_STARTING_COL), used_range.Cells(ACTIVE_ROW, columns_count)).Value2[0])
-    print(f"{data=}")
+    # print(f"{data=}")
     packed_column_header_codes = pack_cumulative_columns(data)
     
     day_data = None
@@ -357,10 +367,22 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
                 day_data += f"-{REL_HOLIDAY_CODE}"
             elif holiday in national_holidays:
                 day_data += f"-{NAT_HOLIDAY_CODE}"
-            overtime_hours, hashed_set = disect_code(day_data)
+            overtime_hours, code_set = disect_code(day_data)
+            # print(f"{overtime_hours=}")
             # print(f"employee {e.ID} at day: {i+1}")
-            col = packed_column_header_codes[hashed_set] - CUMULATIVE_STARTING_COL
-            employee_cumulatives[col] += (overtime_hours + 8)
+            """Employee has worked overtime + base time"""
+            if (overtime_hours > OVERTIME_OVERFLOW):
+                overtime_hours -= OVERTIME_OVERFLOW
+                col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
+                employee_cumulatives[col] += overtime_hours
+                code_set.remove("pr")
+                col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
+                employee_cumulatives[col] += 8
+            else:
+                """Employee has worked overtime without base time (just overtime) or just base time"""
+                col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
+
+                employee_cumulatives[col] += overtime_hours if overtime_hours > 0 else 8
         
         insertion_data.append((row, employee_cumulatives))
         # print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
