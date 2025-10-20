@@ -91,9 +91,23 @@ class Graph:
         return access_token.token
 
     async def get_mails(self, recipient_id, delta_url=None):
+        
+        # Get the folder ID for "TEXT"
+        folders = await self.app_client.users.by_user_id(recipient_id).mail_folders.get()
+
+        folder_id = None
+        for folder in folders.value:
+            # print(f"folder name: {folder.display_name}")
+            if folder.display_name.lower() == "exception":
+                folder_id = folder.id
+                break
+
+        if not folder_id:
+            raise ValueError("Folder 'TEXT' not found for this user.")
+
         query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
             select = ['sender', 'subject', 'hasAttachments', 'body'],
-            # top = 5,
+            # top = 2,
             # orderby=['receivedDateTime DESC']
         )
         request_configuration = RequestConfiguration(
@@ -112,8 +126,12 @@ class Graph:
             # headers = {"Authorization:" f"Bearer {token}"}
             # return requests.get(delta_url, headers=headers)
             return await self.app_client.request_adapter.send_async(request_info, DeltaGetResponse, error_map)
+        # messages = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
+        # by_mail_folder_id('inbox').messages.delta.get(
+        #     request_configuration
+        # )
         messages = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
-        by_mail_folder_id('inbox').messages.delta.get(
+        by_mail_folder_id(folder_id).messages.delta.get(
             request_configuration
         )
         return messages
