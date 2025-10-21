@@ -140,6 +140,14 @@ class Graph:
         # print(f"DELTA: {messages.odata_delta_link}")
         # print(f"{messages=}")
         for message in messages:
+            #these checks exist to avoid error when deleting messages on which
+            #delta_link was formed (probably also avoiding errors when deleting any message)
+            if "@removed" in (message.additional_data or {}):
+                print(f"Message with id: {message.id} was deleted")
+                continue
+            if not getattr(message, "subject", None):
+                print(f"Message with id: {message.id} has no subject; skipping.")
+                continue
             print(f"SUBJECT: {message.subject}\n")
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
             # print(f"{clean_body(message.body.content)}")
