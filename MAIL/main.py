@@ -52,6 +52,38 @@ def add_value_to_section(config : configparser, section_name : str, value_key : 
     add_section_to_config(config, section_name)
     config[section_name][value_key] = "" if value is None else value
 
+async def fetch_mails(graph : Graph, token : str, config : configparser, delta_link : str, next_link : str):
+    while True:
+        if not token:
+            token = await graph.get_app_only_token()
+        for recipient_id in RECIPIENTS_LIST:
+            section_name = f'delta.{recipient_id}'
+            next_link = None
+            #delta link has to be updated on every startup - can't be shared between multiple e-mail
+            #addresses. Even if there was 1 address, it would still need to be updated every run
+            if config.has_section(section_name):
+                delta_link = config[section_name].get('delta_value', '')
+            all_messages = []
+            response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
+            all_messages.extend(response.value)
+            next_link = response.odata_next_link
+            while(next_link):
+                # print(f"IN NEXT LINK calling")
+                add_value_to_section(config, section_name, 'delta_value', next_link)
+                response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
+                await graph.download_attachments(messages=response.value, recipient_id=recipient_id)
+                # all_messages.extend(response.value)
+                next_link = response.odata_next_link
+            delta_link = response.odata_delta_link
+            await graph.download_attachments(messages=response.value, recipient_id=recipient_id)
+            # print("CALLING FROM DELTA")
+            add_value_to_section(config, section_name, 'delta_value', delta_link)
+            if len(all_messages) > 0:
+                write_to_cfg(CONFIG_FILE_NAME, config, section_name)
+        print("\n" * 2)
+        print("-*-" * 50)
+        sleep(5)
+
 async def main():
     print('Python Graph Tutorial\n')
 
@@ -64,44 +96,19 @@ async def main():
     
     token = None
     delta_link = None
-    recipient_id = None
     section_name = None
     next_link = None
     try:
-        while True:
-            if not token:
-                token = await graph.get_app_only_token()
-            for recipient_id in RECIPIENTS_LIST:
-                section_name = f'delta.{recipient_id}'
-                next_link = None
-                #delta link has to be updated on every startup - can't be shared between multiple e-mail
-                #addresses. Even if there was 1 address, it would still need to be updated every run
-                if config.has_section(section_name):
-                    delta_link = config[section_name].get('delta_value', '')
-                all_messages = []
-                response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
-                all_messages.extend(response.value)
-                next_link = response.odata_next_link
-                while(next_link):
-                    print(f"\n\nNEXT LINK: {next_link}\n\n")
-                    add_value_to_section(config, section_name, 'delta_value', next_link)
-                    response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
-                    all_messages.extend(response.value)
-                    next_link = response.odata_next_link
-                await graph.download_attachments(messages=all_messages, recipient_id=recipient_id)
-                delta_link = response.odata_delta_link
-                add_value_to_section(config, section_name, 'delta_value', delta_link)
-                if len(all_messages) > 0:
-                    write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-            print("\n" * 2)
-            print("-*-" * 50)
-            sleep(5)
-    
-    except Exception:
+        await fetch_mails(graph, token, config, delta_link, next_link)
+    except Exception as e:
         print("------------------EXCEPTION OCCURED, perserving last delta link------------------")
+        print(e)
         print(f"{section_name=}\n{next_link=}\n{delta_link=}")
         add_value_to_section(config, section_name, 'delta_value', next_link if next_link else delta_link)
         write_to_cfg(CONFIG_FILE_NAME, config, section_name)
+        #Don't stop executing the program - go right back in
+        print("----------------------RESTARTING WHILE LOOP FROM THE TOP----------------------")
+        await fetch_mails(graph, token, config, delta_link, next_link)
 
     await graph.close()
     return
