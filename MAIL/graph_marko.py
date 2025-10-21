@@ -64,6 +64,7 @@ def clean_body(body: str) -> str:
     return text
 
 
+
 class Mail:
     def __init__(self, message):
         self.body = clean_body(message.body.content)
@@ -136,10 +137,14 @@ class Graph:
         # )
         return messages
 
-    async def download_attachments(self, messages, recipient_id): 
+    async def download_attachments(self, messages, recipient_id) -> dict: 
         # print(f"DELTA: {messages.odata_delta_link}")
         # print(f"{messages=}")
+        data = []
+        if not messages:
+            return {}
         for message in messages:
+            obj = {}
             #these checks exist to avoid error when deleting messages on which
             #delta_link was formed (probably also avoiding errors when deleting any message)
             if "@removed" in (message.additional_data or {}):
@@ -148,16 +153,20 @@ class Graph:
             if not getattr(message, "subject", None):
                 print(f"Message with id: {message.id} has no subject; skipping.")
                 continue
+            obj['Subject'] = message.subject
             print(f"SUBJECT: {message.subject}\n")
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
             # print(f"{clean_body(message.body.content)}")
             cleaned_body = clean_body(message.body.content)
+            obj['Body'] = cleaned_body
             print(f"{cleaned_body=}\n")
             # print(f"{cleaned_body=}\n")
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)
-        return
+            obj['Attachments'] = [os.path.join(DOWNLOAD_PATH, attachment.name) for attachment in attachments.value]
+            data.append(obj)
+        return data
 
     async def close(self):
         await self.client_credential.close()
