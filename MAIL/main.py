@@ -61,7 +61,7 @@ def add_value_to_section(config : configparser, section_name : str, value_key : 
 def add_to_output(file_name : str, data : dict) -> None:
     json_str = json.dumps(data, indent=4, ensure_ascii=False)
     path = os.path.join(OUTPUT_DIR_PATH, file_name)
-    with open(path, "a", encoding="utf-8") as f:
+    with open(path, "w+", encoding="utf-8") as f:
         f.write(json_str)
 
 async def fetch_mails(graph : Graph, config : configparser) -> None:
@@ -69,12 +69,20 @@ async def fetch_mails(graph : Graph, config : configparser) -> None:
     delta_link = None
     section_name = None
     next_link = None
+    recipient_id = None
     data = []
 
     try:
         while True:
-            if not token:
+            try:
                 token = await graph.get_app_only_token()
+            except ValueError as e:
+                if "HTTP transport has already been closed" in str(e):
+                    print("Transport closed - reinitializing graph")
+                    graph.close()
+                    graph = Graph(config)
+                    token = await graph.get_app_only_token()
+                
             for recipient_id in RECIPIENTS_LIST:
                 section_name = f'delta.{recipient_id}'
                 data = []
@@ -101,7 +109,7 @@ async def fetch_mails(graph : Graph, config : configparser) -> None:
                 add_value_to_section(config, section_name, 'delta_value', delta_link)
                 if len(all_messages) > 0:
                     write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-            add_to_output(OUTPUT_FILE, data)
+            add_to_output(f'{recipient_id}.json', data)
             print("\n" * 2)
             print("-*-" * 50)
             sleep(5)
@@ -111,7 +119,7 @@ async def fetch_mails(graph : Graph, config : configparser) -> None:
         print(f"{section_name=}\n{next_link=}\n{delta_link=}")
         add_value_to_section(config, section_name, 'delta_value', next_link if next_link else delta_link)
         write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-        add_to_output(OUTPUT_FILE, data)
+        add_to_output(f'{recipient_id}.json', data)
         #Don't stop executing the program - go right back in
         print("----------------------RESTARTING WHILE LOOP FROM THE TOP----------------------")
 
