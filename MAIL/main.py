@@ -3,6 +3,7 @@
 
 import asyncio
 import configparser
+import traceback
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from graph_marko import Graph
 
@@ -65,63 +66,54 @@ def add_to_output(file_name : str, data : dict) -> None:
         f.write(json_str)
 
 async def fetch_mails(graph : Graph, config : configparser) -> None:
-    token = None
-    delta_link = None
     section_name = None
     next_link = None
+    delta_link = None
     recipient_id = None
     data = []
 
-    try:
-        while True:
-            try:
-                token = await graph.get_app_only_token()
-            except ValueError as e:
-                if "HTTP transport has already been closed" in str(e):
-                    print("Transport closed - reinitializing graph")
-                    graph.close()
-                    graph = Graph(config)
-                    token = await graph.get_app_only_token()
-                
-            for recipient_id in RECIPIENTS_LIST:
-                section_name = f'delta.{recipient_id}'
-                data = []
-                next_link = None
-                #delta link has to be updated on every startup - can't be shared between multiple e-mail
-                #addresses. Even if there was 1 address, it would still need to be updated every run
-                if config.has_section(section_name):
-                    delta_link = config[section_name].get('delta_value', '')
-                all_messages = []
-                response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
-                all_messages.extend(response.value)
-                next_link = response.odata_next_link
-                while(next_link):
-                    # print(f"IN NEXT LINK calling")
-                    add_value_to_section(config, section_name, 'delta_value', next_link)
-                    response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
-                    data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
-                    # all_messages.extend(response.value)
-                    next_link = response.odata_next_link
-                    response.value = None
-                delta_link = response.odata_delta_link
-                data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
-                # print("CALLING FROM DELTA")
-                add_value_to_section(config, section_name, 'delta_value', delta_link)
-                if len(all_messages) > 0:
-                    write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-            add_to_output(f'{recipient_id}.json', data)
-            print("\n" * 2)
-            print("-*-" * 50)
-            sleep(5)
-    except Exception as e:
-        print("------------------EXCEPTION OCCURED, perserving last delta link------------------")
-        print(e)
-        print(f"{section_name=}\n{next_link=}\n{delta_link=}")
-        add_value_to_section(config, section_name, 'delta_value', next_link if next_link else delta_link)
-        write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-        add_to_output(f'{recipient_id}.json', data)
-        #Don't stop executing the program - go right back in
-        print("----------------------RESTARTING WHILE LOOP FROM THE TOP----------------------")
+    # try:
+    await graph._ensure_fresh_connection()
+        
+    for recipient_id in RECIPIENTS_LIST:
+        section_name = f'delta.{recipient_id}'
+        data = []
+        next_link = None
+        #delta link has to be updated on every startup - can't be shared between multiple e-mail
+        #addresses. Even if there was 1 address, it would still need to be updated every run
+        if config.has_section(section_name):
+            delta_link = config[section_name].get('delta_value', '')
+        all_messages = []
+        response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
+        all_messages.extend(response.value)
+        next_link = response.odata_next_link
+        while(next_link):
+            # print(f"IN NEXT LINK calling")
+            add_value_to_section(config, section_name, 'delta_value', next_link)
+            response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
+            data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
+            # all_messages.extend(response.value)
+            next_link = response.odata_next_link
+            response.value = None
+        delta_link = response.odata_delta_link
+        data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
+        # print("CALLING FROM DELTA")
+        add_value_to_section(config, section_name, 'delta_value', delta_link)
+        if len(all_messages) > 0:
+            write_to_cfg(CONFIG_FILE_NAME, config, section_name)
+    add_to_output(f'{recipient_id}.json', data)
+    print("\n" * 2)
+    print("-*-" * 50)
+    sleep(5)
+    # except Exception:
+    #     print("------------------EXCEPTION OCCURED, perserving last delta link------------------")
+    #     print(traceback.format_exc())
+    #     print(f"{section_name=}\n{next_link=}\n{delta_link=}")
+    #     add_value_to_section(config, section_name, 'delta_value', next_link if next_link else delta_link)
+    #     write_to_cfg(CONFIG_FILE_NAME, config, section_name)
+    #     add_to_output(f'{recipient_id}.json', data)
+    #     #Don't stop executing the program - go right back in
+    #     print("----------------------RESTARTING WHILE LOOP FROM THE TOP----------------------")
 
 async def main():
     print('Python Graph Tutorial\n')
@@ -132,8 +124,6 @@ async def main():
 
     azure_settings = config['azure']
     graph: Graph = Graph(azure_settings)
-    
-
 
     while True:
         await fetch_mails(graph, config)

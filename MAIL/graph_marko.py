@@ -18,8 +18,10 @@ from kiota_abstractions.base_request_configuration import RequestConfiguration
 from bs4 import BeautifulSoup
 import os
 import re 
+import time
 
 DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_DOWNLOAD')
+REFRESH_TIME_MIN = 50
 
 def file_valid(attachment):
     # return attachment.additional_data.get("@odata.type") == "#microsoft.graph.fileAttachment" and \
@@ -41,6 +43,7 @@ def save_attachment(attachments):
 def clean_body(body: str) -> str:
     soup = BeautifulSoup(body, "html.parser")
 
+    # print(f"SOUP: {soup}")
     # 1. Remove inline images (signatures, tracking pixels, etc.)
     for img in soup.find_all("img"):
         img.decompose()
@@ -61,7 +64,7 @@ def clean_body(body: str) -> str:
     text = soup.get_text(separator=" ", strip=True)
 
     text = re.sub(r'From:.*(?=\bSubject:)', '', text, flags=re.DOTALL)
-    return text
+    return text.replace('\u034f', '').replace('\xa0', '')
 
 
 
@@ -76,19 +79,35 @@ class Graph:
     settings: SectionProxy
     client_credential: ClientSecretCredential
     app_client: GraphServiceClient
+    _last_refreshed: float
+
 
     def __init__(self, config: SectionProxy):
         self.settings = config
+        self._last_refreshed = time.time()
+        self._initialize_client()
+
+    def _initialize_client(self):
         client_id = self.settings['clientId']
         tenant_id = self.settings['tenantId']
         client_secret = self.settings['clientSecret']
-
+        
         self.client_credential = ClientSecretCredential(tenant_id, client_id, client_secret)
         self.app_client = GraphServiceClient(self.client_credential)
+        self._last_refreshed = time.time()
 
+    async def _ensure_fresh_connection(self):
+        """Recreate every 50 mins to prevent timeout"""    
+        elapsed = time.time() - self._last_refreshed
+        if elapsed > REFRESH_TIME_MIN * 60:
+            print("Recreating credential to prevent timeout")
+            await self.client_credential.close()
+            self._initialize_client()
+    
     async def get_app_only_token(self):
         graph_scope = 'https://graph.microsoft.com/.default'
         access_token = await self.client_credential.get_token(graph_scope)
+        print(f"{access_token=}")
         return access_token.token
 
     async def get_mails(self, recipient_id, delta_url=None):
@@ -154,6 +173,7 @@ class Graph:
                 print(f"Message with id: {message.id} has no subject; skipping.")
                 continue
             obj['Subject'] = message.subject
+            print(f"MESSAGE ID: {message.id}")
             print(f"SUBJECT: {message.subject}\n")
             # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
             # print(f"{clean_body(message.body.content)}")
