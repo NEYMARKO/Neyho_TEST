@@ -7,12 +7,12 @@ from datetime import datetime
 import holidays
 # import pyautogui
 
-INPUT_FOLDER = "INPUT_6"
+INPUT_FOLDER = "INPUT_10_2"
 INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
-OUTPUT_FOLDER = "OUTPUT_6"
+OUTPUT_FOLDER = "OUTPUT_10_2"
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
 
-MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira evidencije rada 06-2025.xlsm"
+MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/ADP_Evidencija rada 10-2025 test.xlsm"
 # MASTER_TABLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MASTER_TABLE_FILE)
 
 REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
@@ -101,14 +101,33 @@ def batch_rows_insert(start_col : int, end_col : int, data : list[str], ws : any
         # print(f"ENTERED: (row, s_col, e_col) : ({row}, {start_col}, {end_col})")
     return
 
-def find_employee_in_table(id : str, ws : any) -> tuple[list[str], int]:
+def find_employee_in_table(id : str, name : str, surname : str, ws : any) -> tuple[list[str], int]:
     """
     Returns row's content and index for employee that matches parameter id.
     """
     used_range = ws.UsedRange
-    found_cell = used_range.Find(What=id)
-    if found_cell:
-        row = found_cell.Row
+    row = -1
+    if id:
+        found_cell = used_range.Find(What=id)
+        if found_cell:
+            row = found_cell.Row
+        else:
+            return ([], -1)
+    else:
+        first_surname_cell = used_range.Find(What=surname)
+        if not first_surname_cell:
+            return ([], -1)
+        next_cell = used_range.FindNext(first_surname_cell)
+        while next_cell and next_cell.Address != first_surname_cell.Address:
+            row = next_cell.Row
+            row_range = ws.Rows(row)
+            name_cell = row_range.Find(What=name)
+            if name_cell:
+                col_cnt = used_range.Columns.Count
+                return ([used_range.Cells(row, col).Value for col in range(1, col_cnt + 1)], row)
+            next_cell = used_range.FindNext(next_cell)
+        return ([], -1)
+    if row != -1:
         col_cnt = used_range.Columns.Count
         return ([used_range.Cells(row, col).Value for col in range(1, col_cnt + 1)], row)
     return ([], -1)
@@ -142,17 +161,28 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
     month, year = extract_date_from_name(MASTER_TABLE_PATH)
     for employee in employees_data:
         captured_undefined_codes = []
-        row_data, row = find_employee_in_table(id=employee.ID, ws=ws)
+        row_data, row = find_employee_in_table(id=employee.ID, name=employee.first_name, surname=employee.last_name, ws=ws)
         print(f"{row=}")
+        # print(f"employee id: {employee.ID}")
         # print(f"{row_data=}")
+        # print(f"{employee.last_name=}")
         if row_data:
             month_codes_input = []
             for i in range(starting_col, ending_col + 1):
                 cell = used_range.Cells(row, i)
+                # print(f"CELL: {cell.Address}")
                 #i - starting_col because loop starts from starting_col => list items are in range [0, len(list)]
+                # print(f"EMPLOYEE DATA: {employee.monthly_data}")
+                # print(f"I: {i}, STARTING COL: {starting_col}")
                 code = employee.monthly_data[i - starting_col]
                 code = code if not code else code.upper().strip()
                 if not validation_cache:
+                    # validation_formula = None
+                    # try:
+                    #     validation_formula = cell.Validation.Formula1
+                    #     validation_cache = extract_values_from_validation(validation_formula=validation_formula, wb=wb)
+                    # except:
+                    #     validation_cache = None
                     validation_cache = extract_values_from_validation(validation_formula=cell.Validation.Formula1, wb=wb)
                 mapped_code = CODES_MAPPING.get(code, None)
                 if code and (code not in validation_cache and mapped_code not in validation_cache):
@@ -179,7 +209,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
     batch_rows_insert(start_col=starting_col, end_col=ending_col, data=data, ws=ws)
     wb.Save()
     excel_app.closeFile(MASTER_TABLE_PATH)
-    print(f"INSERTED {len(employees_data)} elements")
+    print(f"INSERTED {len(data)}/{len(employees_data)} total elements")
     return code_reports
 
 def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
@@ -263,7 +293,8 @@ def disect_code(code : str) -> tuple[int, set[str]]:
         just_overtime = False
 
     for i in range(len(code_list)):
-        number_split = re.split("(\d+)", code_list[i])
+        print("THISE USED TO BE '(\d+)' - NOT RAW")
+        number_split = re.split(r"(\d+)", code_list[i])
         if len(number_split) > 1:
             code_list.remove(code_list[i])
             i -= 1
@@ -415,7 +446,7 @@ def main():
 
     excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
 
-    
+    print(f"CATEGORIES: {categories}")
     for file in files:
         file_path = f"{INPUT_FOLDER_PATH}/{file}"
         wb = excel_app.openFile(file_path=file_path)
@@ -453,7 +484,7 @@ def main():
 
     fill_reports_table(excel_app, code_reports)
 
-    fill_cumulative_table(excel_app, employees)
+    # fill_cumulative_table(excel_app, employees)
     # fill_cumulative_table(excel_app, [])
 
     excel_app.quit()
