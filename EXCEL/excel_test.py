@@ -28,10 +28,10 @@ UNDEFINED_CODE_MESSAGE = "Navedena šifra se ne poklapa sa listom šifri, molim 
 USER_NOT_FOUND_MESSAGE = "Nisam uspio pronaći zaposlenika"
 CODES_MAPPING = {'BO': 'BO-AO', 'J+3': 'J-PR3', 'J+4': 'J-PR4', 'J4': 'J-PR4', 'NER': 'DO', 'PR-P8': 'PR-O8', 'U': 'J'}
 
-#used for 'PRAZNIK'
-ON_HOLIDAY_CODE = "off_hol"
 #used for 'BLAGDAN'
-OFF_HOLIDAY_CODE = "on_hol"
+HOLIDAY_CODE = "hol"
+#used for 'PRAZNIK'
+HOLIDAY_OFF_CODE = "hol_off"
 SATURDAY_CODE = "sat"
 SUNDAY_CODE = "sun"
 
@@ -263,8 +263,8 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
         "prv": "pr",
         "subota": SATURDAY_CODE,
         "nedjelja": SUNDAY_CODE,
-        "blagdan": ON_HOLIDAY_CODE,
-        "praznik": OFF_HOLIDAY_CODE,
+        "blagdan": HOLIDAY_CODE,
+        "praznik": HOLIDAY_OFF_CODE,
         "jutro" : "j",
         "popodne": "p",
         "noć": "n",
@@ -330,7 +330,7 @@ def is_special_code_case(code : str) -> bool:
 
 #there isn't a case where person is doing both overtime and base time night shift
 #==============>hardcoded 2 and 6 hours
-def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_shift : Day, code_set : set, column_header_codes : dict) -> None:
+def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_shift : Day, code_set : set, column_header_codes : dict, transferable_hol=False) -> None:
     col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
     employee_cumulatives[col] += 2
 
@@ -338,10 +338,14 @@ def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_s
         code_set.add(SATURDAY_CODE)
     #if it is last day of month, 6 hours will get added to either day in the weekend - i decided it will be sunday
     elif day_of_shift == Day.SATURDAY or day == len(employee_cumulatives) - 1:
+        code_set.remove(SATURDAY_CODE)
         code_set.add(SUNDAY_CODE)
     elif day_of_shift == Day.SUNDAY:
         code_set.remove(SUNDAY_CODE)
 
+    if HOLIDAY_CODE in code_set and not transferable_hol:
+        code_set.remove(HOLIDAY_CODE)
+    print(f"ADDED TO {code_set}")
     col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
     employee_cumulatives[col] += 6
 
@@ -418,13 +422,15 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             dt = datetime.strptime(date_str, "%d %m %Y")
             holiday = holidays_cro.get(dt.date(), '')
             if holiday and not day_data:
-                day_data_set = {OFF_HOLIDAY_CODE}
+                day_data_set = {HOLIDAY_OFF_CODE}
                 col = packed_column_header_codes[frozenset(day_data_set)] - CUMULATIVE_STARTING_COL
                 employee_cumulatives[col] += 8
                 continue
             #has worked on holiday
             elif holiday:
-                day_data += f"-{ON_HOLIDAY_CODE}"
+                day_data += f"-{HOLIDAY_CODE}"
+            elif not day_data:
+                continue
             working_hours, code_set = disect_code(day_data)
             # print(f"{overtime_hours=}")
             # print(f"employee {e.ID} at day: {i+1}")
@@ -440,6 +446,16 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
                 """Employee has worked overtime without base time (just overtime) or just base time"""
                 if 'N' in code_set or 'n' in code_set:
                     day_of_shift = None
+                    #get the next day to see whether to remove "hol" from code_set when allocating 6 hours
+                    #for next day in night shift
+                    transferable_hol = False
+                    try:
+                        date_str = f'{i + 2} {month} {year}'
+                        dt = datetime.strptime(date_str, "%d %m %Y")
+                        transferable_hol = holidays_cro.get(dt.date(), '') != ''
+                    except ValueError as e:
+                        print(str(e))
+                    
                     if i in fridays:
                         day_of_shift = Day.FRIDAY
                     elif i in saturdays:
@@ -448,7 +464,7 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
                         day_of_shift = Day.SUNDAY
                         print(f"{code_set=}")
                         print(f"{day_of_shift=}")
-                    handle_night_shift_overflow(i, employee_cumulatives, day_of_shift, code_set, packed_column_header_codes)
+                    handle_night_shift_overflow(i, employee_cumulatives, day_of_shift, code_set, packed_column_header_codes, transferable_hol)
                 else:
                     col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
                     #if person has worked overtime, he/she could have worked for 5 hours instead of 8
