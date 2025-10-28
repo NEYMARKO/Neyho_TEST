@@ -5,14 +5,15 @@ from excel import PyExcel
 import time
 from datetime import datetime
 import holidays
+from enum import Enum
 # import pyautogui
 
-INPUT_FOLDER = "INPUT_10_2"
+INPUT_FOLDER = "INPUT_6"
 INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
-OUTPUT_FOLDER = "OUTPUT_10_2"
+OUTPUT_FOLDER = "OUTPUT_6"
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
 
-MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/ADP_Evidencija rada 10-2025 test.xlsm"
+MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira evidencije rada 06-2025.xlsm"
 # MASTER_TABLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MASTER_TABLE_FILE)
 
 REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
@@ -24,15 +25,24 @@ CUMULATIVES_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira satnica - MARKO.xlsm"
 
 OUTPUT_FILE_HEADER_ROW = 2
 UNDEFINED_CODE_MESSAGE = "Navedena šifra se ne poklapa sa listom šifri, molim provjeru."
+USER_NOT_FOUND_MESSAGE = "Nisam uspio pronaći zaposlenika"
 CODES_MAPPING = {'BO': 'BO-AO', 'J+3': 'J-PR3', 'J+4': 'J-PR4', 'J4': 'J-PR4', 'NER': 'DO', 'PR-P8': 'PR-O8', 'U': 'J'}
 
-REL_HOLIDAY_CODE = "rel_hol"
-NAT_HOLIDAY_CODE = "nat_hol"
+#used for 'PRAZNIK'
+ON_HOLIDAY_CODE = "off_hol"
+#used for 'BLAGDAN'
+OFF_HOLIDAY_CODE = "on_hol"
 SATURDAY_CODE = "sat"
 SUNDAY_CODE = "sun"
 
+"""Starts from 'GREŠKA' column - nothing before that can be overriden (everything must be perserved)"""
 CUMULATIVE_STARTING_COL = 8
 OVERTIME_OVERFLOW = 24
+
+class Day(Enum):
+    FRIDAY = 1
+    SATURDAY = 2
+    SUNDAY = 3
 
 class Employee:
     
@@ -175,7 +185,7 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
                 # print(f"EMPLOYEE DATA: {employee.monthly_data}")
                 # print(f"I: {i}, STARTING COL: {starting_col}")
                 code = employee.monthly_data[i - starting_col]
-                code = code if not code else code.upper().strip()
+                code = code if not code else "".join(code.upper().split())
                 if not validation_cache:
                     # validation_formula = None
                     # try:
@@ -204,6 +214,11 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
                 month_codes_input.append(code if not mapped_code else mapped_code)
             row_tuple = (row, month_codes_input)
             data.append(row_tuple)
+        else:
+            code_reports.append({"Šifra": "/", "Datum": "/", "Employee ID": employee.ID, 
+                                         "Name": employee.first_name, "Surname": employee.last_name, 
+                                         "Organization Name": employee.organization_name, "Organization unit": employee.organization_unit, 
+                                         "Komentar": USER_NOT_FOUND_MESSAGE})
     # for report in code_reports:
     #     print(f"{report=}")
     batch_rows_insert(start_col=starting_col, end_col=ending_col, data=data, ws=ws)
@@ -248,8 +263,8 @@ def pack_cumulative_columns(data : list[str]) -> dict[set]:
         "prv": "pr",
         "subota": SATURDAY_CODE,
         "nedjelja": SUNDAY_CODE,
-        "blagdan": REL_HOLIDAY_CODE,
-        "praznik": NAT_HOLIDAY_CODE,
+        "blagdan": ON_HOLIDAY_CODE,
+        "praznik": OFF_HOLIDAY_CODE,
         "jutro" : "j",
         "popodne": "p",
         "noć": "n",
@@ -293,7 +308,7 @@ def disect_code(code : str) -> tuple[int, set[str]]:
         just_overtime = False
 
     for i in range(len(code_list)):
-        print("THISE USED TO BE '(\d+)' - NOT RAW")
+        # print("THISE USED TO BE '(\d+)' - NOT RAW")
         number_split = re.split(r"(\d+)", code_list[i])
         if len(number_split) > 1:
             code_list.remove(code_list[i])
@@ -313,42 +328,44 @@ def disect_code(code : str) -> tuple[int, set[str]]:
 def is_special_code_case(code : str) -> bool:
     return "do" in code or "go" in code or "pd" in code or "bo" in code
 
+#there isn't a case where person is doing both overtime and base time night shift
+#==============>hardcoded 2 and 6 hours
+def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_shift : Day, code_set : set, column_header_codes : dict) -> None:
+    col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
+    employee_cumulatives[col] += 2
+
+    if day_of_shift == Day.FRIDAY:
+        code_set.add(SATURDAY_CODE)
+    #if it is last day of month, 6 hours will get added to either day in the weekend - i decided it will be sunday
+    elif day_of_shift == Day.SATURDAY or day == len(employee_cumulatives) - 1:
+        code_set.add(SUNDAY_CODE)
+    elif day_of_shift == Day.SUNDAY:
+        code_set.remove(SUNDAY_CODE)
+
+    col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
+    employee_cumulatives[col] += 6
+
 def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> None:
     month, year = extract_date_from_name(MASTER_TABLE_PATH)
-    saturdays = []
-    sundays = []
+    fridays = set()
+    saturdays = set()
+    sundays = set()
     holidays_cro = holidays.country_holidays('HR', years=int(year))
     # print(f'{holidays=}')
     for i in range(len(employees_data[0].monthly_data)):
         date = f'{i + 1} {month} {year}'
         dt = datetime.strptime(date, "%d %m %Y")
-        if (dt.weekday() == 5):
-                saturdays.append(i)
+        if (dt.weekday() == 4):
+            fridays.add(i)
+        elif (dt.weekday() == 5):
+            saturdays.add(i)
         elif (dt.weekday() == 6):
-                sundays.append(i)
-    
-    religious_holidays = {
-        "Epiphany",
-        "Easter Sunday",
-        "Easter Monday",
-        "Corpus Christi",
-        "Assumption Day",
-        "All Saints' Day",
-        "Christmas Day",
-        "Saint Stephen's Day",
-    }
-
-    national_holidays = {
-        "New Year's Day",
-        "Labor Day",
-        "Statehood Day",
-        "Anti-Fascist Struggle Day",
-        "Victory and Homeland Thanksgiving Day and Croatian Veterans Day",
-        "Remembrance Day",
-    }
+            sundays.add(i)
 
     SHEET_NAME = "Sumarno"
     ACTIVE_ROW = 2
+
+    print(f"{CUMULATIVES_PATH=}")
     wb = excel_app.openFile(CUMULATIVES_PATH)
     ws = excel_app.resolveSheet(SHEET_NAME, wb.Name)
     used_range = ws.UsedRange
@@ -358,11 +375,9 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
     # print(f"{data=}")
     packed_column_header_codes = pack_cumulative_columns(data)
     
-    day_data = None
+    day_data = ""
     row = -1
     col = -1
-
-    # employee_cumulatives = [None] * len(packed_column_header_codes)
     
     insertion_data = []
 
@@ -376,44 +391,68 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             print(f"Unable to enter cumulatives for employee: {e.ID} - person not in table")
             continue
         for i in range(len(e.monthly_data)):
-            day_data = "n/a" if not e.monthly_data[i] else e.monthly_data[i].lower()
+            day_data = "" if (e.monthly_data[i] == 0 or e.monthly_data[i] == 0.0 or not e.monthly_data[i]) else e.monthly_data[i]
+            day_data = day_data.lower() if day_data else day_data
+            # print(f"{day_data=}")
             #doesn't matter if these days are made on holiday or sometime else
-            if day_data == "n/a" or is_special_code_case(day_data):
+            if day_data and is_special_code_case(day_data):
                 #mapping to [0, len(dict)-1] range
                 col = packed_column_header_codes[frozenset(set([day_data]))] - CUMULATIVE_STARTING_COL
-                # employee_cumulatives[col] = 8 if not employee_cumulatives[col] else employee_cumulatives[col] + 8 
-                # if col >= len(e.monthly_data):
-                #     print(f"index of {frozenset(set([day_data]))} is: {col}")
                 employee_cumulatives[col] += 8 
-                continue
-            date = f'{i + 1} {month} {year}'
-            dt = datetime.strptime(date, "%d %m %Y")
-            if i in saturdays:
+                continue      
+            
+            if i in saturdays and day_data:
                 day_data += f"-{SATURDAY_CODE}"
-            elif i in sundays:
+            elif i in sundays and day_data:
                 day_data += f"-{SUNDAY_CODE}"
             
+            # day_data = "n/a" if (not e.monthly_data[i] or e.monthly_data[i] == 0) else e.monthly_data[i].lower()
+            
+            """
+            If employee didn't work on HOLIDAY, write 8h under 'Praznik' column
+            otherwise append holiday code and proceed like with any other code
+            (it will get written under columns that contain 'blagdan' in their name)
+            """
+
+            date_str = f'{i + 1} {month} {year}'
+            dt = datetime.strptime(date_str, "%d %m %Y")
             holiday = holidays_cro.get(dt.date(), '')
-            if holiday in religious_holidays:
-                day_data += f"-{REL_HOLIDAY_CODE}"
-            elif holiday in national_holidays:
-                day_data += f"-{NAT_HOLIDAY_CODE}"
-            overtime_hours, code_set = disect_code(day_data)
+            if holiday and not day_data:
+                day_data_set = {OFF_HOLIDAY_CODE}
+                col = packed_column_header_codes[frozenset(day_data_set)] - CUMULATIVE_STARTING_COL
+                employee_cumulatives[col] += 8
+                continue
+            #has worked on holiday
+            elif holiday:
+                day_data += f"-{ON_HOLIDAY_CODE}"
+            working_hours, code_set = disect_code(day_data)
             # print(f"{overtime_hours=}")
             # print(f"employee {e.ID} at day: {i+1}")
             """Employee has worked overtime + base time"""
-            if (overtime_hours > OVERTIME_OVERFLOW):
-                overtime_hours -= OVERTIME_OVERFLOW
+            if (working_hours > OVERTIME_OVERFLOW):
+                working_hours -= OVERTIME_OVERFLOW
                 col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
-                employee_cumulatives[col] += overtime_hours
+                employee_cumulatives[col] += working_hours
                 code_set.remove("pr")
                 col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
                 employee_cumulatives[col] += 8
             else:
                 """Employee has worked overtime without base time (just overtime) or just base time"""
-                col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
-
-                employee_cumulatives[col] += overtime_hours if overtime_hours > 0 else 8
+                if 'N' in code_set or 'n' in code_set:
+                    day_of_shift = None
+                    if i in fridays:
+                        day_of_shift = Day.FRIDAY
+                    elif i in saturdays:
+                        day_of_shift = Day.SATURDAY
+                    elif i in sundays:
+                        day_of_shift = Day.SUNDAY
+                        print(f"{code_set=}")
+                        print(f"{day_of_shift=}")
+                    handle_night_shift_overflow(i, employee_cumulatives, day_of_shift, code_set, packed_column_header_codes)
+                else:
+                    col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
+                    #if person has worked overtime, he/she could have worked for 5 hours instead of 8
+                    employee_cumulatives[col] += working_hours if working_hours > 0 else 8
         
         insertion_data.append((row, employee_cumulatives))
         # print(f"MODIFIED MONTH REPORT: {e.monthly_data}")
@@ -484,7 +523,7 @@ def main():
 
     fill_reports_table(excel_app, code_reports)
 
-    # fill_cumulative_table(excel_app, employees)
+    fill_cumulative_table(excel_app, employees)
     # fill_cumulative_table(excel_app, [])
 
     excel_app.quit()
