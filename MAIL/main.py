@@ -13,33 +13,9 @@ import json
 
 # RECIPIENTS_LIST = ["05ff32cc-49a4-48ae-a4a6-808e8864e71b", "b247c66a-2651-4ff9-a6a1-858a24f30387"]
 RECIPIENTS_LIST = ["b247c66a-2651-4ff9-a6a1-858a24f30387"]
-# RECIPIENTS_LIST = ["05ff32cc-49a4-48ae-a4a6-808e8864e71b"]
-
-
-#  File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
-    # raise mapped_exc(message) from exc
-# httpx.ReadTimeout  --- puko internet
-
-###
-#   File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\graph_marko.py", line 133, in download_attachments
-#     save_attachment(attachments)
-#     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-#   File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\graph_marko.py", line 34, in save_attachment
-#     if a.content_bytes and file_valid(a):
-#AttributeError: 'ItemAttachment' object has no attribute 'content_bytes'. Did you mean: 'content_type'? --- mail u mailu
-
-#   File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\.venv\Lib\site-packages\kiota_http\httpx_request_adapter.py", line 573, in throw_failed_responses       
-#     raise exc
-# msgraph.generated.models.o_data_errors.o_data_error.ODataError:
-#         APIError
-#         Code: 404
-#         message: None
-#         error: MainError(additional_data={}, code='ErrorItemNotFound', details=None, inner_error=None, message='The specified object was not found in the store., The process failed to get the correct properties.', target=None)
 
 CONFIG_FILE_NAME = 'config.cfg'
 OUTPUT_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_FILE = "output.json"
-
 
 async def display_access_token(graph: Graph) -> None:
     token = await graph.get_app_only_token()
@@ -72,48 +48,45 @@ async def fetch_mails(graph : Graph, config : configparser) -> None:
     recipient_id = None
     data = []
 
-    # try:
-    await graph._ensure_fresh_connection()
-        
-    for recipient_id in RECIPIENTS_LIST:
-        section_name = f'delta.{recipient_id}'
-        data = []
-        next_link = None
-        #delta link has to be updated on every startup - can't be shared between multiple e-mail
-        #addresses. Even if there was 1 address, it would still need to be updated every run
-        if config.has_section(section_name):
-            delta_link = config[section_name].get('delta_value', '')
-        all_messages = []
-        response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
-        all_messages.extend(response.value)
-        next_link = response.odata_next_link
-        while(next_link):
-            # print(f"IN NEXT LINK calling")
-            add_value_to_section(config, section_name, 'delta_value', next_link)
-            response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
-            data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
-            # all_messages.extend(response.value)
+    try:
+        await graph._ensure_fresh_connection()
+            
+        for recipient_id in RECIPIENTS_LIST:
+            section_name = f'delta.{recipient_id}'
+            data = []
+            next_link = None
+            #delta link has to be updated on every startup - can't be shared between multiple e-mail
+            #addresses. Even if there was 1 address, it would still need to be updated every run
+            if config.has_section(section_name):
+                delta_link = config[section_name].get('delta_value', '')
+            all_messages = []
+            response = await graph.get_mails(recipient_id=recipient_id, delta_url=delta_link)
+            all_messages.extend(response.value)
             next_link = response.odata_next_link
-            response.value = None
-        delta_link = response.odata_delta_link
-        data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
-        # print("CALLING FROM DELTA")
-        add_value_to_section(config, section_name, 'delta_value', delta_link)
-        if len(all_messages) > 0:
-            write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-    add_to_output(f'{recipient_id}.json', data)
-    print("\n" * 2)
-    print("-*-" * 50)
-    sleep(5)
-    # except Exception:
-    #     print("------------------EXCEPTION OCCURED, perserving last delta link------------------")
-    #     print(traceback.format_exc())
-    #     print(f"{section_name=}\n{next_link=}\n{delta_link=}")
-    #     add_value_to_section(config, section_name, 'delta_value', next_link if next_link else delta_link)
-    #     write_to_cfg(CONFIG_FILE_NAME, config, section_name)
-    #     add_to_output(f'{recipient_id}.json', data)
-    #     #Don't stop executing the program - go right back in
-    #     print("----------------------RESTARTING WHILE LOOP FROM THE TOP----------------------")
+            while(next_link):
+                add_value_to_section(config, section_name, 'delta_value', next_link)
+                response = await graph.get_mails(recipient_id=recipient_id, delta_url=next_link)
+                data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
+                # all_messages.extend(response.value)
+                next_link = response.odata_next_link
+                response.value = None
+            delta_link = response.odata_delta_link
+            data.extend(await graph.download_attachments(messages=response.value, recipient_id=recipient_id))
+            # print("CALLING FROM DELTA")
+            add_value_to_section(config, section_name, 'delta_value', delta_link)
+            if len(all_messages) > 0:
+                write_to_cfg(CONFIG_FILE_NAME, config, section_name)
+        add_to_output(f'{recipient_id}.json', data)
+        print("\n" * 2)
+        print("-*-" * 50)
+        sleep(5)
+    except Exception:
+        print("------------------EXCEPTION OCCURED, perserving last delta link------------------")
+        print(traceback.format_exc())
+        print(f"{section_name=}\n{next_link=}\n{delta_link=}")
+        add_value_to_section(config, section_name, 'delta_value', next_link if next_link else delta_link)
+        write_to_cfg(CONFIG_FILE_NAME, config, section_name)
+        add_to_output(f'{recipient_id}.json', data)
 
 async def main():
     print('Python Graph Tutorial\n')
@@ -130,28 +103,5 @@ async def main():
 
     await graph.close()
     return
-
-async def greet_user(graph: Graph):
-    user = await graph.get_user()
-    if user:
-        print('Hello,', user.display_name)
-        # For Work/school accounts, email is in mail property
-        # Personal accounts, email is in userPrincipalName
-        print('Email:', user.mail or user.user_principal_name, '\n')
-
-async def list_inbox(graph: Graph):
-    # message_page = await graph.get_inbox()
-    await graph.download_attachments()
-
-# <SendMailSnippet>
-async def send_mail(graph: Graph):
-    # Send mail to the signed-in user
-    # Get the user for their email address
-    user = await graph.get_user()
-    if user:
-        user_email = user.mail or user.user_principal_name
-
-        await graph.send_mail('Testing Microsoft Graph', 'Hello world!', user_email or '')
-        print('Mail sent.\n')
 
 asyncio.run(main())

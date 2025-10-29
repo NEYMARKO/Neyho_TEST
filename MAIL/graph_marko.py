@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# <UserAuthConfigSnippet>
 import base64
 from configparser import SectionProxy
 from azure.identity.aio import ClientSecretCredential
@@ -24,12 +23,8 @@ DOWNLOAD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ATTS_D
 REFRESH_TIME_MIN = 50
 
 def file_valid(attachment):
-    # return attachment.additional_data.get("@odata.type") == "#microsoft.graph.fileAttachment" and \
-    # (attachment.name.endswith("pdf") or attachment.name.endswith("xlsx"))
-    # print(f"ATTACHMENT: {attachment}\n")
     return attachment.odata_type == "#microsoft.graph.fileAttachment" and\
     not attachment.is_inline
-    # attachment.name.endswith("pdf") or attachment.name.endswith("xlsx")
 
 def save_attachment(attachments):
     for a in attachments.value:
@@ -43,7 +38,6 @@ def save_attachment(attachments):
 def clean_body(body: str) -> str:
     soup = BeautifulSoup(body, "html.parser")
 
-    # print(f"SOUP: {soup}")
     # 1. Remove inline images (signatures, tracking pixels, etc.)
     for img in soup.find_all("img"):
         img.decompose()
@@ -62,25 +56,14 @@ def clean_body(body: str) -> str:
 
     # 4. Now extract the top part as plain text
     text = soup.get_text(separator=" ", strip=True)
-
     text = re.sub(r'From:.*(?=\bSubject:)', '', text, flags=re.DOTALL)
     return text.replace('\u034f', '').replace('\xa0', '')
-
-
-
-class Mail:
-    def __init__(self, message):
-        self.body = clean_body(message.body.content)
-        self.sender = message.sender,
-        self.subject = message.subject,
-        self.attachments = [],
 
 class Graph:
     settings: SectionProxy
     client_credential: ClientSecretCredential
     app_client: GraphServiceClient
     _last_refreshed: float
-
 
     def __init__(self, config: SectionProxy):
         self.settings = config
@@ -157,8 +140,6 @@ class Graph:
         return messages
 
     async def download_attachments(self, messages, recipient_id) -> dict: 
-        # print(f"DELTA: {messages.odata_delta_link}")
-        # print(f"{messages=}")
         data = []
         if not messages:
             return {}
@@ -172,21 +153,14 @@ class Graph:
             if not getattr(message, "subject", None):
                 print(f"Message with id: {message.id} has no subject; skipping.")
                 continue
-            obj['Subject'] = message.subject
-            print(f"MESSAGE ID: {message.id}")
-            print(f"SUBJECT: {message.subject}\n")
-            # print(f"SUBJECT: {message.subject}\n\t\t{re.sub(r'\<[^>]*\>', '', message.body.content)}")
-            # print(f"{clean_body(message.body.content)}")
             cleaned_body = clean_body(message.body.content)
-            obj['Body'] = cleaned_body
+            print(f"SUBJECT: {message.subject}\n")
             print(f"{cleaned_body=}\n")
-            # print(f"{cleaned_body=}\n")
+            obj['Subject'] = message.subject
+            obj['Body'] = cleaned_body
             attachments = await self.app_client.users.by_user_id(recipient_id).mail_folders.\
                 by_mail_folder_id('inbox').messages.by_message_id(message.id).attachments.get()
             save_attachment(attachments)
             obj['Attachments'] = [os.path.join(DOWNLOAD_PATH, attachment.name) for attachment in attachments.value]
             data.append(obj)
         return data
-
-    async def close(self):
-        await self.client_credential.close()

@@ -1,0 +1,19 @@
+#  File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    # raise mapped_exc(message) from exc
+# httpx.ReadTimeout  --- puko internet
+
+###
+#   File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\graph_marko.py", line 133, in download_attachments
+#     save_attachment(attachments)
+#     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+#   File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\graph_marko.py", line 34, in save_attachment
+#     if a.content_bytes and file_valid(a):
+#AttributeError: 'ItemAttachment' object has no attribute 'content_bytes'. Did you mean: 'content_type'? --- mail u mailu
+
+#   File "C:\Users\MarkoProsenjak\Desktop\Neyho\Neyho_TEST\MAIL\.venv\Lib\site-packages\kiota_http\httpx_request_adapter.py", line 573, in throw_failed_responses       
+#     raise exc
+# msgraph.generated.models.o_data_errors.o_data_error.ODataError:
+#         APIError
+#         Code: 404
+#         message: None
+#         error: MainError(additional_data={}, code='ErrorItemNotFound', details=None, inner_error=None, message='The specified object was not found in the store., The process failed to get the correct properties.', target=None)
