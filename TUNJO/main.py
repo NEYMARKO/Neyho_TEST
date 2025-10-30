@@ -2,11 +2,13 @@ import asyncio
 import configparser
 import requests
 from datetime import datetime
+import json
 
 endpoint_url = "https://api.productive.io/api/v2"
+ASCII_CODE_A = 65
+ASCII_CODE_Z = 90
 
 def create_company(company_info : dict, custom_fields: dict, headers : dict) -> str:
-    
     body = {
         "data": {
             "type": "companies",
@@ -29,10 +31,47 @@ def create_company(company_info : dict, custom_fields: dict, headers : dict) -> 
     }
     response = requests.post(f'{endpoint_url}/companies', headers=headers, json=body)
     if response.status_code not in range(200, 299):
-        print(f'Company creation response:\n{response.json()}')
+        print(f'Error occured while creating company:\n{response.json()}')
+        return -1
+    print(f"Sucessfully created company: {company_info.get('full_name', '')} ")
     return response.json().get('data', {}).get('id', '')
 
-def create_person(first_name : str, last_name : str, email : str, company_id : str, headers: dict) -> None:
+def link_person_to_company(person_id : str, company_id : str, headers : dict) -> bool:
+    if not person_id:
+        return False
+    body = {
+        "data": {
+            "type": "people",
+            "relationships": {
+                "company": {
+                    "data": {
+                        "type": "companies",
+                        "id": company_id
+                    }
+                }
+            }
+        }
+    }
+    response = requests.patch(f'{endpoint_url}/people/{person_id}', headers=headers, json=body)
+    if response.status_code not in range(200, 299):
+        print(f"Problem linking person with id {person_id} to company with id {company_id}")
+        print(f"FULL PROBLEM:\n{response.json()}")
+        return False
+    print("Person sucessfully linked to company")
+    return True
+
+def create_person(first_name : str, last_name : str, email : str, company_id : str, headers: dict) -> bool:
+    response = requests.get(f'{endpoint_url}/people?filter[email][contains]={email}', headers).json()
+    data = response.get('data', [])
+    if data:
+        appended_ascii_codes = []
+        mail_ascii_value = len(data) - 1 + ASCII_CODE_A
+        while mail_ascii_value > 0:
+            appended_ascii_codes.append(mail_ascii_value % (ASCII_CODE_Z - ASCII_CODE_A))
+            mail_ascii_value //= (ASCII_CODE_A - ASCII_CODE_Z)
+        old_email = email
+        email += ''.join(chr(ASCII_CODE_A + c) for c in appended_ascii_codes)
+        print(f"Person with e-mail address: {old_email} already exists => modified to {email}")
 
     body = {
         "data": {
@@ -54,10 +93,12 @@ def create_person(first_name : str, last_name : str, email : str, company_id : s
     }
     response = requests.post(f'{endpoint_url}/people', headers=headers, json=body)
     if response.status_code not in range(200, 299):
-        print(f'Person creation response:\n{response.json()}')
-    return
+        print(f'Error occured while creating person:\n{response.json()}')
+        return False
+    print(f"Sucessfully created user: {first_name} {last_name}")
+    return True
 
-def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields : dict, headers : dict) -> None:
+def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields : dict, service_id : str, headers : dict) -> None:
     body = {
         "data": {
             "type": "deals",
@@ -83,6 +124,12 @@ def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields 
                         "type": "users",
                         "id": user_id
                     }
+                },
+                "service": {
+                    "data": {
+                        "type": "services",
+                        "id": service_id
+                    }
                 }
             }
         }
@@ -90,6 +137,8 @@ def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields 
     response = requests.post(f'{endpoint_url}/deals', headers=headers, json=body)
     if response.status_code not in range(200, 299):
         print(f'Deal creation response:\n{response.json()}')
+        return
+    print(f"Sucessfully created deal: {deal_name}")
     return
 
 async def main():
@@ -108,20 +157,32 @@ async def main():
         list(config['company_custom_fields_ids'].values()), list(config['company_custom_values_ids'].values())))
     company_custom_fields[config['company_custom_fields_ids']['usluga_id']] = [config['company_custom_values_ids']['usluga_id']]
 
-    company_info = {'name': 'TestNeyho.d.o.o', 'default_currency': 'EUR',
-                    'full_name': 'TestNeyho.d.o.o', 'tax_id': 11223344556, "phone_number": "+385990100203"
+    company_info = {'name': 'TestNeyho.d.o.o_rac', 'default_currency': 'EUR',
+                    'full_name': 'TestNeyho.d.o.o_rac', 'tax_id': 11223344556, "phone_number": "+385990100203"
                     }
 
-    company_id = create_company(company_info, company_custom_fields, headers)
+    # response = requests.get(f'{endpoint_url}/custom_fields', headers)
+    # response = requests.get(f'{endpoint_url}/custom_fields?filter[customizable_type]=Deals&include=options', headers)
+    # response = requests.get(f'{endpoint_url}/services?include=service_type', headers)
+    response = requests.get(f'{endpoint_url}/projects?include=project_manager,company', headers)
+    with open('data.json', 'w+', encoding='utf-8') as f:
+        json.dump(response.json(), f, ensure_ascii=False, indent=4)
+    # company_id = create_company(company_info, company_custom_fields, headers)
     
-    create_person("TEST_NEYHOmarkoFirstName", "TEST_NEYHOprsoLastName", "TEST_NEYHO_new2@neyho.com", company_id, headers)
+    # if not company_id:
+    #     return
+    # created = create_person("TEST_NEYHO_rac", "TEST_NEYHO_surname", "TEST_NEYHO_rac@neyho.comR", company_id, headers)
 
-    deal_custom_fields = dict(zip(
-        list(config['deal_custom_fields_ids'].values()), list(config['deal_custom_values_ids'].values())))
-    deal_custom_fields[config['deal_custom_fields_ids']['usluga_id']] = [config['deal_custom_values_ids']['usluga_id']]
+    # if not created:
+    #     return
+    
+    # deal_custom_fields = dict(zip(
+    #     list(config['deal_custom_fields_ids'].values()), list(config['deal_custom_values_ids'].values())))
+    # deal_custom_fields[config['deal_custom_fields_ids']['usluga_id']] = [config['deal_custom_values_ids']['usluga_id']]
 
-    owner_id = config['deal_owner']['deal_owner_id']
-    create_deal(owner_id, company_id, 'RAC_' + company_info.get('full_name', ''), deal_custom_fields, headers)
+    # owner_id = config['deal_owner']['deal_owner_id']
+    # service_id = config['services']['rac_service_id']
+    # create_deal(owner_id, company_id, 'RAC_' + company_info.get('full_name', ''), deal_custom_fields, service_id, headers)
 
 
 asyncio.run(main())
