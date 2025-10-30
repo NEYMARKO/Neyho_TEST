@@ -98,7 +98,7 @@ def create_person(first_name : str, last_name : str, email : str, company_id : s
     print(f"Sucessfully created user: {first_name} {last_name}")
     return True
 
-def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields : dict, service_id : str, headers : dict) -> None:
+def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields : dict, service_id : str, project_id : str, headers : dict) -> bool:
     body = {
         "data": {
             "type": "deals",
@@ -130,16 +130,59 @@ def create_deal(user_id : str, company_id : str, deal_name : str, custom_fields 
                         "type": "services",
                         "id": service_id
                     }
+                },
+                "project": {
+                    "data": {
+                        "type": "projects",
+                        "id": project_id
+                    }
                 }
             }
         }
     }
     response = requests.post(f'{endpoint_url}/deals', headers=headers, json=body)
     if response.status_code not in range(200, 299):
-        print(f'Deal creation response:\n{response.json()}')
-        return
+        print(f'Error occured while creating deal:\n{response.json()}')
+        return False
     print(f"Sucessfully created deal: {deal_name}")
-    return
+    return True
+
+def create_project(name : str, project_manager_id : str, company_id : str, workflow_id : str, headers : dict) -> str:
+    body = {
+        "data": {
+            "type": "projects",
+            "attributes": {
+                "name": name,
+                "project_type_id": 2
+            },
+            "relationships": {
+                "company": {
+                    "data": {
+                        "type": "companies",
+                        "id": company_id
+                    }
+                },
+                "project_manager": {
+                    "data": {
+                        "type": "people",
+                        "id": project_manager_id
+                    }
+                },
+                "workflow": {
+                    "data": {
+                        "type": "workflows",
+                        "id": workflow_id
+                    }
+                }
+            }
+        }
+    }
+    response = requests.post(f'{endpoint_url}/projects', headers=headers, json=body)
+    if response.status_code not in range(200, 299):
+        print(f'Error occured while creating project:\n{response.json()}')
+        return ""
+    print(f"Sucessfully created project: {name}")
+    return response.json().get('data', {}).get('id', '')
 
 async def main():
 
@@ -164,25 +207,31 @@ async def main():
     # response = requests.get(f'{endpoint_url}/custom_fields', headers)
     # response = requests.get(f'{endpoint_url}/custom_fields?filter[customizable_type]=Deals&include=options', headers)
     # response = requests.get(f'{endpoint_url}/services?include=service_type', headers)
-    response = requests.get(f'{endpoint_url}/projects?include=project_manager,company', headers)
-    with open('data.json', 'w+', encoding='utf-8') as f:
-        json.dump(response.json(), f, ensure_ascii=False, indent=4)
-    # company_id = create_company(company_info, company_custom_fields, headers)
+    # response = requests.get(f'{endpoint_url}/projects?include=project_manager,company,workflow', headers)
+    # response = requests.get(f'{endpoint_url}/deals?include=project', headers)
+    # with open('deals_with_projects.json', 'w+', encoding='utf-8') as f:
+    #     json.dump(response.json(), f, ensure_ascii=False, indent=4)
+    company_id = create_company(company_info, company_custom_fields, headers)
     
-    # if not company_id:
-    #     return
-    # created = create_person("TEST_NEYHO_rac", "TEST_NEYHO_surname", "TEST_NEYHO_rac@neyho.comR", company_id, headers)
+    if not company_id:
+        return
+    created = create_person("TEST_NEYHO_rac", "TEST_NEYHO_surname", "TEST_NEYHO_rac@neyho.comR", company_id, headers)
 
-    # if not created:
-    #     return
+    if not created:
+        return
     
-    # deal_custom_fields = dict(zip(
-    #     list(config['deal_custom_fields_ids'].values()), list(config['deal_custom_values_ids'].values())))
-    # deal_custom_fields[config['deal_custom_fields_ids']['usluga_id']] = [config['deal_custom_values_ids']['usluga_id']]
+    deal_custom_fields = dict(zip(
+        list(config['deal_custom_fields_ids'].values()), list(config['deal_custom_values_ids'].values())))
+    deal_custom_fields[config['deal_custom_fields_ids']['usluga_id']] = [config['deal_custom_values_ids']['usluga_id']]
 
-    # owner_id = config['deal_owner']['deal_owner_id']
-    # service_id = config['services']['rac_service_id']
-    # create_deal(owner_id, company_id, 'RAC_' + company_info.get('full_name', ''), deal_custom_fields, service_id, headers)
+    project_manager_id = config['projects']['project_manager_id']
+    default_workflow_id = config['projects']['default_workflow_id']   
+    project_id = create_project('RAC_' + company_info.get('full_name', ''), project_manager_id, company_id, default_workflow_id, headers)
 
-
+    if not project_id:
+        return
+    
+    owner_id = config['deal_owner']['deal_owner_id']
+    service_id = config['services']['rac_service_id']
+    create_deal(owner_id, company_id, 'RAC_' + company_info.get('full_name', ''), deal_custom_fields, service_id, project_id, headers)
 asyncio.run(main())
