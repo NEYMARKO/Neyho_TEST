@@ -113,7 +113,19 @@ def batch_rows_insert(start_col : int, end_col : int, data : list[str], ws : any
 
 def find_employee_in_table(id : str, name : str, surname : str, ws : any) -> tuple[list[str], int]:
     """
-    Returns row's content and index for employee that matches parameter id.
+    Function searches for row in which wanted employee is mentioned.
+
+    Looks for emplyoee using his ID. If ID isn't provided, function uses employee's 
+    first and last name in search.
+
+    Parameters
+    - id: employee's id
+    - name: employee's first name
+    - surname: employee's last name
+
+    Returns
+    - tuple with row's content and row index of row that matches search parameters
+    - empty list for content and -1 for row index if user hasn't been found
     """
     used_range = ws.UsedRange
     row = -1
@@ -233,10 +245,11 @@ def create_reports_table(excel_app : PyExcel) -> any:
     defined in REPORTS_PATH global value. If file was sucessfully opened, it is populated
     with headers
     """
-    print("Creating reports table")
+    print("---------------------------------OPENING REPORTS TABLE---------------------------------")
     wb = excel_app.openFile(REPORTS_PATH)
     if not wb:
         try:
+            print("---------------------------------CREATING REPORTS TABLE---------------------------------")
             excel_app.createFile(REPORTS_PATH)
         except:
             print(f"Having trouble creating {REPORTS_PATH} file")
@@ -244,7 +257,8 @@ def create_reports_table(excel_app : PyExcel) -> any:
     #already able to open wb => no need for populating it with headers
     else:
         return wb
-    #try to open after creating
+    
+    #try to open after creating - fill with categories and save
     wb = excel_app.openFile(REPORTS_PATH)
     if not wb:
         return None
@@ -288,7 +302,14 @@ def extract_date_from_name(file_path : str) -> tuple[str, str]:
     return
 
 
-def pack_cumulative_columns(data : list[str]) -> dict[set]:
+def pack_cumulative_columns(data : list[str]) -> dict[frozenset[set]]:
+    """
+    Replaces key words with appropriate codes (for example: "jutro" is mapped to "j").
+    Values used for mapping are read from file that containts cumulatives.
+
+    Returns
+    - dictionary with frozenset (hashable sets) as keys (mapped codes) and column index as value
+    """
 
     replacements = {
         "prekovremeno": "pr",
@@ -363,6 +384,10 @@ def is_special_code_case(code : str) -> bool:
 #there isn't a case where person is doing both overtime and base time night shift
 #==============>hardcoded 2 and 6 hours
 def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_shift : Day, code_set : set, column_header_codes : dict, transferable_hol=False) -> None:
+    """
+    In case person worked night shift on friday/saturday/sunday, 2 hours should get written that day, and other 6 in the next day.
+    """
+    
     col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
     employee_cumulatives[col] += 2
 
@@ -448,21 +473,25 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             date_str = f'{i + 1} {month} {year}'
             dt = datetime.strptime(date_str, "%d %m %Y")
             holiday = holidays_cro.get(dt.date(), '')
-            #persoh didn't work on holiday => write in praznik
+            #persoh didn't work on holiday => write in praznik - if holiday was on weekend
+            #and person didn't work that day, don't write anything
             if holiday and not day_data and not (i in saturdays or i in sundays):
                 day_data_set = {HOLIDAY_OFF_CODE}
                 col = packed_column_header_codes[frozenset(day_data_set)] - CUMULATIVE_STARTING_COL
                 employee_cumulatives[col] += 8
                 continue
-            #has worked on holiday - implicit day_data != None
+            #has worked on holiday
             elif holiday and day_data:
                 day_data += f"-{HOLIDAY_CODE}"
             
             #if day_data is still empty, that means person didn't work that day and holiday
-            #doesn't fall on that day
+            #doesn't fall on that day (NOTICE THAT everything (every code) gets appended to day_data)
+            #=> if day_data is empty up until this point, person didn't work and holiday wasn't that day)
             if not day_data:
                 continue
-
+            
+            #now it makes sense to check whether it was weekend because person actually worked
+            #that day
             if i in saturdays and day_data:
                 day_data += f"-{SATURDAY_CODE}"
             elif i in sundays and day_data:
@@ -473,6 +502,12 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             # print(f"employee {e.ID} at day: {i+1}")
             """Employee has worked overtime + base time"""
             if (working_hours > OVERTIME_OVERFLOW):
+                #OVERTIME_OVERFLOW has been set to 24 => no person can work 24 extra
+                #hours in a day - it is distinct between cases where person worked
+                #just overtime vs when person worked base + overtime - this addition was used
+                #to avoid some more complexed logic - just check if working hours are something extreme
+                #24+ => person has worked both overtime + base => take away those 24 and you will get
+                #real value for overtime hours that person has worked
                 working_hours -= OVERTIME_OVERFLOW
                 col = packed_column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
                 employee_cumulatives[col] += working_hours
@@ -487,8 +522,9 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
                     #for next day in night shift
                     transferable_hol = False
                     try:
-                        date_str = f'{i + 2} {month} {year}'
-                        dt = datetime.strptime(date_str, "%d %m %Y")
+                        next_day_date = f'{i + 2} {month} {year}'
+                        dt = datetime.strptime(next_day_date, "%d %m %Y")
+                        #EASTER + EASTER MONDAY
                         transferable_hol = holidays_cro.get(dt.date(), '') != ''
                     except ValueError as e:
                         print(str(e))
@@ -515,6 +551,33 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
     print(f"INSERTED cumulatives")
     return
 
+def find_headers_row(ws : any) -> int:
+    """
+    Finds row in which headers are defined
+    """
+    used_range = ws.UsedRange
+    header_key_words = ["employee id", "first", "last", "name", "organization", "unit"]
+    for word in header_key_words:
+        if found_cell := used_range.Find(What=word):
+            # print(found_cell.Row)
+            """
+            Used range does not perserve original row numbers. It shrinks to the
+            smallest rectangle containing data. If first 2 rows are empty, used_range
+            will start from row 3 => used_range.Cells(1, 1) will actually point to
+            cell (3, 1) in worksheet => hence why we need to subtract that value
+            from row that headers were found in => find global (on worksheet level)
+            row value of header - also need to increment the difference by 1
+            """
+            return found_cell.Row - used_range.Cells(1,1).Row + 1
+    
+def get_worksheet_name(excel_app : PyExcel, wb : any) -> str:
+    all_worksheets = wb.Worksheets
+    for sheet in all_worksheets:
+        if sheet.Name.lower() == "evidencije" or sheet.Name.lower() == "sheet1":
+            excel_app.setActiveWorkSheet(sheet.Name)
+            return sheet.Name
+    return ""
+
 def main():
 
     os.chdir('/')
@@ -524,7 +587,11 @@ def main():
 
     excel_app = PyExcel()
     wb = excel_app.openFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
-    ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
+
+    active_sheet_name = get_worksheet_name(excel_app, wb)
+    if not active_sheet_name:
+        active_sheet_name = None
+    ws = excel_app.resolveSheet(active_sheet_name, wb.Name)
     
     used_range = ws.UsedRange
     row_count = used_range.Rows.Count
@@ -533,22 +600,31 @@ def main():
     employees = []
     
     categories = {}
+
+    headers_row = find_headers_row(ws)
+    # print(f"actual start in sheet: {used_range.Cells(1, 1).Row}")
     for i in range(1, col_count + 1):
-        categories[i] = used_range.Cells(1, i).Value
+        categories[i] = used_range.Cells(headers_row, i).Value
+        # print(f"({headers_row, i}):{used_range.Cells(headers_row, i).Value}")
 
     excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
 
     print(f"CATEGORIES: {categories}")
     for file in files:
         file_path = f"{INPUT_FOLDER_PATH}/{file}"
-        wb = excel_app.openFile(file_path=file_path)
-        ws = excel_app.resolveSheet('EVIDENCIJE', wb.Name)
+        wb = excel_app.openFile(file_path=file_path)        
+        
+        active_sheet_name = get_worksheet_name(excel_app, wb)
+        if not active_sheet_name:
+            active_sheet_name = None
+        ws = excel_app.resolveSheet(active_sheet_name, wb.Name)
 
         used_range = ws.UsedRange
         row_count = used_range.Rows.Count
         col_count = used_range.Columns.Count
 
-        for i in range(2, row_count + 1):
+        print(f"------------------------------------------READING {wb.Name}------------------------------------------\n")
+        for i in range(find_headers_row(ws) + 1, row_count + 1):
             row_values = {}
             monthly_data = []
 
@@ -562,12 +638,13 @@ def main():
                 except:
                     row_values[categories.get(j)] = used_range.Cells(i, j).Value
             row_values['monthly_data'] = monthly_data
+            # print(row_values)
             employees.append(Employee(row=row_values))
         excel_app.closeFile(file_path=file_path)
     # for employee in employees:
     #     print(f"{employee.ID=}")
     # excel_app.closeFile(EXCEL_INPUT_PATH)
-    print("Sucessfully read all input")
+    print("------------------------------------------Sucessfully read all input------------------------------------------")
     start_time = time.perf_counter()
     code_reports = fill_master_table(excel_app=excel_app, employees_data=employees)
     end_time = time.perf_counter()
