@@ -8,16 +8,16 @@ import holidays
 from enum import Enum
 # import pyautogui
 
-INPUT_FOLDER = "INPUT_6"
+INPUT_FOLDER = "INPUT_8"
 INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
-OUTPUT_FOLDER = "OUTPUT_6"
+OUTPUT_FOLDER = "OUTPUT_8"
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
 
-MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira evidencije rada 06-2025.xlsm"
+MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/ADP_Hospira evidencija rada (prazna) 08-2025.xlsm"
 # MASTER_TABLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MASTER_TABLE_FILE)
 
 REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
-
+REPORTS_HEADERS = ["Code", "Date", "Employee ID", "Name", "Surname", "Organization Name", "Organization unit", "Comment"]
 CUMULATIVES_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira satnica - MARKO.xlsm"
 # REPORTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), REPORTS_FILE)
 # excel = win32.gencache.EnsureDispatch('Excel.Application')
@@ -50,7 +50,7 @@ class Employee:
         self.ID = row.get('Employee ID', '')
         self.organization_name = row.get('Organization name', '')
         self.organization_unit = row.get('Organization unit', '')
-        self.first_name = row.get('First Name', 'BLA-LA')
+        self.first_name = row.get('First Name', '')
         self.last_name = row.get('Surname', '')
         self.monthly_data = row.get('monthly_data', [])
         
@@ -205,20 +205,20 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
                     # + 1 because it is starting from 1, not from 0 (first day in month has value
                     # of 1, not 0) 
                     date = f"{"0" if (i - starting_col + 1) < 10 else ""}{i-starting_col + 1}.{month}.{year}"
-                    code_reports.append({"Šifra": code, "Datum": date, "Employee ID": employee.ID, 
+                    code_reports.append({"Code": code, "Date": date, "Employee ID": employee.ID, 
                                          "Name": employee.first_name, "Surname": employee.last_name, 
                                          "Organization Name": employee.organization_name, "Organization unit": employee.organization_unit, 
-                                         "Komentar": UNDEFINED_CODE_MESSAGE})
+                                         "Comment": UNDEFINED_CODE_MESSAGE})
                     continue
                 employee.monthly_data[i - starting_col] = code if not mapped_code else mapped_code
                 month_codes_input.append(code if not mapped_code else mapped_code)
             row_tuple = (row, month_codes_input)
             data.append(row_tuple)
         else:
-            code_reports.append({"Šifra": "/", "Datum": "/", "Employee ID": employee.ID, 
+            code_reports.append({"Code": "/", "Date": "/", "Employee ID": employee.ID, 
                                          "Name": employee.first_name, "Surname": employee.last_name, 
                                          "Organization Name": employee.organization_name, "Organization unit": employee.organization_unit, 
-                                         "Komentar": USER_NOT_FOUND_MESSAGE})
+                                         "Comment": USER_NOT_FOUND_MESSAGE})
     # for report in code_reports:
     #     print(f"{report=}")
     batch_rows_insert(start_col=starting_col, end_col=ending_col, data=data, ws=ws)
@@ -227,9 +227,41 @@ def fill_master_table(excel_app : any, employees_data : list[Employee]) -> list[
     print(f"INSERTED {len(data)}/{len(employees_data)} total elements")
     return code_reports
 
-def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
-
+def create_reports_table(excel_app : PyExcel) -> any:
+    """
+    Creates file if it doesn't exists, otherwise opens file with specified reports path
+    defined in REPORTS_PATH global value. If file was sucessfully opened, it is populated
+    with headers
+    """
+    print("Creating reports table")
     wb = excel_app.openFile(REPORTS_PATH)
+    if not wb:
+        try:
+            excel_app.createFile(REPORTS_PATH)
+        except:
+            print(f"Having trouble creating {REPORTS_PATH} file")
+            return None
+    #already able to open wb => no need for populating it with headers
+    else:
+        return wb
+    #try to open after creating
+    wb = excel_app.openFile(REPORTS_PATH)
+    if not wb:
+        return None
+    ws = excel_app.resolveSheet("Sheet1", wb.Name)
+    used_range = ws.UsedRange
+
+    target_range = ws.Range(used_range.Cells(1, 1), used_range.Cells(1, len(REPORTS_HEADERS)))
+    target_range.Value = REPORTS_HEADERS
+
+    wb.Save()
+    return wb
+   
+    
+def fill_reports_table(excel_app : PyExcel, code_reports : list[dict]) -> None:
+    wb = create_reports_table(excel_app)
+    if not wb:
+        return None
     print("ALIGN SHEET NAME TO MATCH SHEET NAME FROM FILE")
     ws = excel_app.resolveSheet("Sheet1", wb.Name)
     used_range = ws.UsedRange
@@ -405,11 +437,6 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
                 employee_cumulatives[col] += 8 
                 continue      
             
-            if i in saturdays and day_data:
-                day_data += f"-{SATURDAY_CODE}"
-            elif i in sundays and day_data:
-                day_data += f"-{SUNDAY_CODE}"
-            
             # day_data = "n/a" if (not e.monthly_data[i] or e.monthly_data[i] == 0) else e.monthly_data[i].lower()
             
             """
@@ -421,16 +448,26 @@ def fill_cumulative_table(excel_app : any, employees_data : list[Employee]) -> N
             date_str = f'{i + 1} {month} {year}'
             dt = datetime.strptime(date_str, "%d %m %Y")
             holiday = holidays_cro.get(dt.date(), '')
-            if holiday and not day_data:
+            #persoh didn't work on holiday => write in praznik
+            if holiday and not day_data and not (i in saturdays or i in sundays):
                 day_data_set = {HOLIDAY_OFF_CODE}
                 col = packed_column_header_codes[frozenset(day_data_set)] - CUMULATIVE_STARTING_COL
                 employee_cumulatives[col] += 8
                 continue
-            #has worked on holiday
-            elif holiday:
+            #has worked on holiday - implicit day_data != None
+            elif holiday and day_data:
                 day_data += f"-{HOLIDAY_CODE}"
-            elif not day_data:
+            
+            #if day_data is still empty, that means person didn't work that day and holiday
+            #doesn't fall on that day
+            if not day_data:
                 continue
+
+            if i in saturdays and day_data:
+                day_data += f"-{SATURDAY_CODE}"
+            elif i in sundays and day_data:
+                day_data += f"-{SUNDAY_CODE}"
+
             working_hours, code_set = disect_code(day_data)
             # print(f"{overtime_hours=}")
             # print(f"employee {e.ID} at day: {i+1}")
@@ -539,7 +576,7 @@ def main():
 
     fill_reports_table(excel_app, code_reports)
 
-    fill_cumulative_table(excel_app, employees)
+    # fill_cumulative_table(excel_app, employees)
     # fill_cumulative_table(excel_app, [])
 
     excel_app.quit()
