@@ -8,12 +8,12 @@ import holidays
 from enum import Enum
 # import pyautogui
 
-INPUT_FOLDER = "INPUT_8"
+INPUT_FOLDER = "INPUT_6_MASTER"
 INPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), INPUT_FOLDER)
-OUTPUT_FOLDER = "OUTPUT_8"
+OUTPUT_FOLDER = "OUTPUT_6"
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
 
-MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/ADP_Hospira evidencija rada (prazna) 08-2025.xlsm"
+MASTER_TABLE_PATH = f"{OUTPUT_FOLDER_PATH}/Hospira evidencije rada 06-2025.xlsm"
 # MASTER_TABLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MASTER_TABLE_FILE)
 
 REPORTS_PATH = f"{OUTPUT_FOLDER_PATH}/Reports.xlsx"
@@ -388,6 +388,9 @@ def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_s
     In case person worked night shift on friday/saturday/sunday, 2 hours should get written that day, and other 6 in the next day.
     """
     
+    #if day_of shift is monday - thursday, this logic will still work because
+    #none of the codes will get removed and 6 hours will get added to the same 
+    #code combination (same day)
     col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
     employee_cumulatives[col] += 2
 
@@ -400,8 +403,20 @@ def handle_night_shift_overflow(day : int, employee_cumulatives : list, day_of_s
     elif day_of_shift == Day.SUNDAY:
         code_set.remove(SUNDAY_CODE)
 
-    if HOLIDAY_CODE in code_set and not transferable_hol:
-        code_set.remove(HOLIDAY_CODE)
+    #day_of_shift != None means that it is either Friday, Saturday, Sunday
+    #or last day in month => hours should get transfered to next day
+        #2 HOURS HAVE ALREADY BEEN ADDED TO CURRENT DAY - at the top of the function
+        #NOW WE HAVE TO MODIFY CODES FOR NEXT DAY (TOMMOROW) TO KNOW WHERE SHOULD
+        #REMAINING 6 HOURS GET ADDED
+    if day_of_shift != None:
+
+        #today is holiday, tommorw it isn't => remove HOLIDAY_CODE from code_set 
+        #(weekends have already been removed/added)
+        if HOLIDAY_CODE in code_set and not transferable_hol:
+            code_set.remove(HOLIDAY_CODE)
+        #today isn't holiday, but it is tommorow => add HOLIDAY_CODE to code_set
+        elif HOLIDAY_CODE not in code_set and transferable_hol:
+            code_set.add(HOLIDAY_CODE)
     print(f"ADDED TO {code_set}")
     col = column_header_codes[frozenset(code_set)] - CUMULATIVE_STARTING_COL
     employee_cumulatives[col] += 6
@@ -566,7 +581,9 @@ def find_headers_row(ws : any) -> int:
             will start from row 3 => used_range.Cells(1, 1) will actually point to
             cell (3, 1) in worksheet => hence why we need to subtract that value
             from row that headers were found in => find global (on worksheet level)
-            row value of header - also need to increment the difference by 1
+            row value of header - also need to increment the difference by 1 
+            (because 1st row has index 1 => not 0 like in lists, vectors and any other
+            data structure)
             """
             return found_cell.Row - used_range.Cells(1,1).Row + 1
     
@@ -605,6 +622,7 @@ def main():
     # print(f"actual start in sheet: {used_range.Cells(1, 1).Row}")
     for i in range(1, col_count + 1):
         categories[i] = used_range.Cells(headers_row, i).Value
+        print(f"({headers_row}, {i}): {categories[i]}")
         # print(f"({headers_row, i}):{used_range.Cells(headers_row, i).Value}")
 
     excel_app.closeFile(f"{INPUT_FOLDER_PATH}/{files[0]}")
@@ -653,7 +671,7 @@ def main():
 
     fill_reports_table(excel_app, code_reports)
 
-    # fill_cumulative_table(excel_app, employees)
+    fill_cumulative_table(excel_app, employees)
     # fill_cumulative_table(excel_app, [])
 
     excel_app.quit()
