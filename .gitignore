@@ -214,3 +214,10 @@ TUNJO/*.json
 
 EXCEL/*/*.xlsx
 EXCEL/*/*.xlsm
+
+*.pdf
+*.jpeg
+*.png
+*.txt
+*.path
+*.html
