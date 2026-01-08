@@ -158,13 +158,28 @@ def extract_content_from_page(page : pymupdf.Page) -> str:
     # block = block.split("\n")
     return block
 
-def match_expressions(matching_structs : list[MatchingStruct], file_content : str) -> list[str]:
-    result = []
+def modify_customer_type_info(d : dict[str, str]) -> None:
+    matched_string = d.get('customer_type_resident', 'CHECK KEY!!')
+    print(f"{matched_string=}")
+    x_char_index = matched_string.index('х') #THIS IS MACEDONIAN/CYRILIC 'X' -> it looks like latin x, but has completly different code
+    if x_char_index == -1:
+        raise RuntimeError("Customer type might not have been selected")
+    elif x_char_index <= 0.2 * len(matched_string):
+        d['customer_type_resident'] = "X"
+        d['customer_type_businnes']  = ""
+    else:
+        d['customer_type_resident'] = ""
+        d['customer_type_businnes']  = "X"
+    return
+
+def match_expressions(matching_structs : list[MatchingStruct], file_content : str) -> dict[str, str | bool]:
+    result = {}
     for struct in matching_structs:
         print(f"MATCHING expression: {struct.re_expression}")
-        match = re.search(struct.re_expression, file_content, re.DOTALL)
+        match = re.search(struct.re_expression.lower(), file_content.lower(), re.DOTALL)
         if match:
-            result.append(match.group(1).strip())
+            result[struct.keyword] = match.group(1).strip()
+    modify_customer_type_info(result)
     return result
 def main():
     root_folder_path_obj = Path(__file__).parent
