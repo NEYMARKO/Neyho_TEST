@@ -150,7 +150,7 @@ def convert_img_to_pdf(page : pymupdf.Page) -> Path:
 
 def extract_content_from_page(page : pymupdf.Page) -> str:
     block = page.get_text("blocks", sort=True)
-    block = page.get_text("text", sort=True)
+    block = str(page.get_text("text", sort=True))
     block = re.sub('\n', '  ', block) #It is necessary to map it to more than just 1 space (2 or higher)
     # block = re.sub(r' {2,}', '\n', block)
     block = re.sub(r' {2,}', ' ', block)
@@ -161,9 +161,13 @@ def extract_content_from_page(page : pymupdf.Page) -> str:
 def modify_customer_type_info(d : dict[str, str]) -> None:
     matched_string = d.get('customer_type_resident', 'CHECK KEY!!')
     print(f"{matched_string=}")
-    x_char_index = matched_string.index('х') #THIS IS MACEDONIAN/CYRILIC 'X' -> it looks like latin x, but has completly different code
+    x_char_index = -1
+    try:
+        x_char_index = matched_string.index(chr(0x445)) #This is Macedonian/Cyrilic 'x'
+    except ValueError:
+        x_char_index = matched_string.index(chr(0x78)) #This is Lating 'x'
     if x_char_index == -1:
-        raise RuntimeError("Customer type might not have been selected")
+        raise RuntimeError("Customer type might not have been selected or character case mixed (lower - should be upper or reverse)")
     elif x_char_index <= 0.2 * len(matched_string):
         d['customer_type_resident'] = "X"
         d['customer_type_businnes']  = ""
