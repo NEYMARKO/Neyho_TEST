@@ -33,62 +33,66 @@ def main():
         pix.set_alpha(None)
 
     # pix.invert_irect(pymupdf.IRect(x0=0, y0=0, x1=pix.width, y1=pix.height))
-    gamma = 0.85
+    gamma = 0.9
+    gamma = 0.9
+    gamma = 0.9
+    gamma = 0.9
     # pix.gamma_with(gamma)
     # pix.gamma_with(gamma)
     img_path = f"{image_output_folder_path_obj.absolute()}/res_{res}-gamma_{gamma}.png"
     pix.save(str(img_path))
     
-    # image = cv2.imread(str(img_path))
-    # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # # blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    image = cv2.imread(str(img_path))
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
     # blur = cv2.blur(gray, (2,2))
-    # # thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
     # thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,2))
-    # opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
-    # # opening = cv2.dilate(thresh, kernel, iterations=1)
-    # # opening = cv2.erode(thresh, opening, iterations=1)
-    # invert = 255 - opening
+    thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,2))
+    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    # opening = cv2.dilate(thresh, kernel, iterations=1)
+    # opening = cv2.erode(thresh, opening, iterations=1)
+    invert = 255 - opening
 
-    # data = pytesseract.image_to_string(invert, lang='mkd', config='--psm 6')
-    # print(data)
-    # # cv2.imshow('opening', opening)
-    # # cv2.imshow('blur', blur)
+    data = pytesseract.image_to_string(invert, lang='mkd', config='--psm 6')
+    print(data)
+    cv2.imwrite(img_path, invert)
+    # cv2.imshow('opening', opening)
+    # cv2.imshow('blur', blur)
     # cv2.imshow('blur', blur)
     # cv2.imshow('invert', invert)
     # cv2.waitKey()
     # Read image
-    image = cv2.imread(str(img_path))
+    # image = cv2.imread(str(img_path))
 
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # # Convert to grayscale
+    # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Option 1: Simple approach (often best for clean documents)
-    # Just use adaptive threshold, no morphology
-    binary = cv2.adaptiveThreshold(
-        gray, 255, 
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,  # NOT inverted
-        11,  # block size (must be odd)
-        2    # constant subtracted from mean
-    )
+    # # Option 1: Simple approach (often best for clean documents)
+    # # Just use adaptive threshold, no morphology
+    # binary = cv2.adaptiveThreshold(
+    #     gray, 255, 
+    #     cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    #     cv2.THRESH_BINARY,  # NOT inverted
+    #     11,  # block size (must be odd)
+    #     2    # constant subtracted from mean
+    # )
 
-    # Option 2: With light denoising (for slightly noisy documents)
-    # Denoise first, then threshold
-    denoised = cv2.fastNlMeansDenoising(gray, h=10)
-    binary = cv2.threshold(
-        denoised, 0, 255, 
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU  # NOT inverted
-    )[1]
+    # # Option 2: With light denoising (for slightly noisy documents)
+    # # Denoise first, then threshold
+    # denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    # binary = cv2.threshold(
+    #     denoised, 0, 255, 
+    #     cv2.THRESH_BINARY + cv2.THRESH_OTSU  # NOT inverted
+    # )[1]
 
-    # Option 3: If you need morphology (for very noisy scans)
-    # Use MORPH_CLOSE on BLACK text, not white
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    binary = cv2.threshold(
-        blur, 0, 255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU  # Black text on white
-    )[1]
+    # # Option 3: If you need morphology (for very noisy scans)
+    # # Use MORPH_CLOSE on BLACK text, not white
+    # blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    # binary = cv2.threshold(
+    #     blur, 0, 255,
+    #     cv2.THRESH_BINARY + cv2.THRESH_OTSU  # Black text on white
+    # )[1]
     # Now MORPH_CLOSE removes small BLACK noise (not white)
     # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))  # Smaller kernel
     # cleaned = cv2.morphologyEx(
@@ -98,8 +102,8 @@ def main():
     #     iterations=1
     # )
 
-    cv2.imshow('result', binary)
-    cv2.waitKey()
+    # cv2.imshow('result', binary)
+    # cv2.waitKey()
     # image = cv2.imread(str(img_path))
     # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     # # blur = cv2.GaussianBlur(gray, (3, 3), 0)

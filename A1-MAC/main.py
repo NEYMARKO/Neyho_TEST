@@ -3,6 +3,7 @@ import pymupdf
 from enum import Enum
 from pathlib import Path
 from dataclasses import dataclass
+from difflib import SequenceMatcher as SM
 
 DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
                      'Договор за купопродажба на уреди со одложено плаќање на рати': [],
@@ -139,7 +140,12 @@ def convert_img_to_pdf(page : pymupdf.Page) -> Path:
     pix = page.get_pixmap(matrix=matrix)
     if pix.alpha:
         pix.set_alpha(None)
-    gamma = 1.35
+    # gamma = 1.35
+    # gamma = 1.35
+    # gamma = 1.35
+    gamma = 0.2
+    gamma = 0.2
+    gamma = 0.2
     pix.gamma_with(gamma)
     img_path = f"{image_output_folder_path_obj.absolute()}/res_{res}-gamma_{gamma}.png"
     pix.save(str(img_path))
@@ -176,15 +182,71 @@ def modify_customer_type_info(d : dict[str, str]) -> None:
         d['customer_type_businnes']  = "X"
     return
 
+
+def modify_matching_struct(struct : MatchingStruct, file_content : str) -> None:
+    s = SM(None, struct.preceding.lower(), file_content.lower())
+    # print(f"{s.get_matching_blocks()=}")
+    mb = s.get_matching_blocks()
+    new_preceding = ""
+    for block in mb:
+        print(f"Close match to: ({struct.preceding[block.a:block.a+block.size]}) is: ({file_content[block.b:block.b+block.size]})")
+        new_preceding += struct.preceding[block.a:block.a+block.size]
+    print(f"{mb=}")
+    len_new = len(new_preceding)
+    len_old = len(struct.preceding)
+    if len_new < len_old:
+        start = mb[-2].b + mb[-2].size
+        end = mb[-2].b + mb[-2].size + (len_old - len_new) + 1
+        print(f"{start=}")
+        print(f"{end=}")
+        new_preceding += file_content[start:end]
+    print(f"---------------{new_preceding=}---------------")
+    struct.preceding = new_preceding
+    s = SM(None, struct.following, file_content)
+    # print(f"{s.get_matching_blocks()=}")
+    mb = s.get_matching_blocks()
+    new_following = ""
+    for block in mb:
+        print(f"Close match to: ({struct.following[block.a:block.a+block.size]}) is: ({file_content[block.b:block.b+block.size]})")
+        new_following += struct.following[block.a:block.a+block.size]
+    struct.following = new_following
+    print(f"---------------{new_following=}---------------")
+    # lines = file_content.split()
+    # dirty = False
+    # print(f"STRUCT: {struct}")
+
+    # for line in lines:
+    #     if SM(None, struct.preceding, line).ratio() > 0.6:
+    #         struct.preceding = line
+    #         dirty = True
+    #         print(f"Preceding expression ({struct.preceding}) is similar to: {line}")
+    #     if struct.following and SM(None, struct.following, line).ratio() > 0.6:
+    #         struct.following = line
+    #         print(f"Following expression is similar to: {line}")
+    #         dirty = True
+    # if dirty:
+    #     struct.re_expression = create_regex_expression(struct.preceding, struct.following)
+    return
+
 def match_expressions(matching_structs : list[MatchingStruct], file_content : str) -> dict[str, str | bool]:
     result = {}
     for struct in matching_structs:
-        print(f"MATCHING expression: {struct.re_expression}")
+        # print(f"MATCHING expression: {struct.re_expression}")
         match = re.search(struct.re_expression.lower(), file_content.lower(), re.DOTALL)
         if match:
             result[struct.keyword] = match.group(1).strip()
+            # print(f"{result=}")
+        else:
+            print("Entering modifier")
+            modify_matching_struct(struct, file_content)
+            match = re.search(struct.re_expression.lower(), file_content.lower(), re.DOTALL)
+            if match:
+                result[struct.keyword] = match.group(1).strip()
+    # print(f"{matching_structs=}")
+    print(f"{result=}")
     modify_customer_type_info(result)
     return result
+
 def main():
     root_folder_path_obj = Path(__file__).parent
     # print(list(root_folder_path_obj.iterdir()))
@@ -205,7 +267,7 @@ def main():
     ocrHandler = OcrHandler(file_name.split(".")[0])
     for bound in ocrHandler.bounds:
         print(bound.re_expression)
-    # print(f"{pdf_content=}")
+    print(f"{pdf_content=}")
     print(f"{match_expressions(ocrHandler.bounds, pdf_content)=}")
     return
 
