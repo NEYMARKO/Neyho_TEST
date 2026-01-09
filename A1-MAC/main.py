@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from PIL import Image, ImageEnhance
 from difflib import SequenceMatcher as SM
 from boxdetect import config
-from boxdetect.pipelines import get_boxes
+from boxdetect.pipelines import get_boxes, get_checkboxes
 DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
                      'Договор за купопродажба на уреди со одложено плаќање на рати': [],
                      'Договор за користење на јавни комуникациски услуги': ['за користење на Јавни комуникациски услуги бр.', 'на ден', 'помеѓу', 
@@ -179,7 +179,16 @@ def convert_img_to_pdf(page : pymupdf.Page) -> Path:
     rects, grouping_rects, image, output_image = get_boxes(
         img_path, cfg=cfg, plot=False
     )
+    checkboxes = get_checkboxes(
+        img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=True
+    )
     import matplotlib.pyplot as plt
+    for checkbox in checkboxes:
+        print(f"Bounding rectangle: {checkbox[0]}")
+        print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
+        plt.figure(figsize=(1,1))
+        plt.imshow(checkbox[2])
+        plt.show()
     plt.figure(figsize=(20,20))
     plt.imshow(output_image)
     plt.show()
@@ -325,12 +334,12 @@ def main():
         doc_path = convert_img_to_pdf(doc[0])
     if doc_path:
         doc = pymupdf.open(doc_path)
-    pdf_content = extract_content_from_page(doc[0])
-    ocrHandler = OcrHandler(file_name.split(".")[0])
-    for bound in ocrHandler.bounds:
-        print(bound.re_expression)
-    print(f"{pdf_content=}")
-    print(f"{match_expressions(ocrHandler.bounds, pdf_content)=}")
+    # pdf_content = extract_content_from_page(doc[0])
+    # ocrHandler = OcrHandler(file_name.split(".")[0])
+    # for bound in ocrHandler.bounds:
+    #     print(bound.re_expression)
+    # print(f"{pdf_content=}")
+    # print(f"{match_expressions(ocrHandler.bounds, pdf_content)=}")
     return
 
 if __name__ == "__main__":
