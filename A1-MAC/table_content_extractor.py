@@ -9,21 +9,21 @@ class ImageType(Enum):
 class TableExtractor:
     def __init__(self, image_path : Path):
         self.original_image = cv2.imread(image_path.name)
-        self.preprocessed_image = None
         self.root_output_folder = Path() / "outputs"
         self.preprocessed_output_folder = self.root_output_folder / "preprocessed"
 
-    def preprocess_image(self) -> None:
-        gray_img = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY)
+    def preprocess_image(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
+        inverted_img = self.preprocess_till_invert(input_image)
+        dilated_img = cv2.dilate(inverted_img, None, iterations=5)
+        return dilated_img
+    
+    def preprocess_till_invert(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
+        gray_img = cv2.cvtColor(self.original_image if input_image is None else input_image, cv2.COLOR_BGR2GRAY)
         threshold_img = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         inverted_img = cv2.bitwise_not(threshold_img)
-        dilated_img = cv2.dilate(inverted_img, None, iterations=5)
-        self.preprocessed_image = dilated_img
-        cv2.imwrite(f"{self.preprocessed_output_folder}/preprocessed.png", self.preprocessed_image)
-        return
-    
-    def find_contours(self) -> None:
-        self.contours, self.hierarchy = cv2.findContours(self.preprocessed_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        return inverted_img
+    def find_contours(self, image : cv2.typing.MatLike) -> None:
+        self.contours, self.hierarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         self.original_image_with_all_contours = self.original_image.copy()
         cv2.drawContours(self.original_image_with_all_contours, self.contours, -1, (0, 255, 0), 3)
     
@@ -113,14 +113,59 @@ class TableExtractor:
         # return the ordered coordinates
         return rect
 
-    def show_image(self, type : ImageType) -> None:
-        match type:
-            case ImageType.ORIGINAL:
-                cv2.imshow('original_image', self.original_image)
-                return
-            case ImageType.PREPROCESSED:
-                cv2.imshow('preprocessed_image', self.preprocessed_image)
-            case _:
-                return
-        cv2.waitKey(0)
+
+    def erode_vertical_lines(self, inverted_image : cv2.typing.MatLike) -> None:
+        hor = np.array([[1,1,1,1,1,1]])
+        self.vertical_lines_eroded_image = cv2.erode(inverted_image, hor, iterations=5)
+        self.vertical_lines_eroded_image = cv2.dilate(self.vertical_lines_eroded_image, hor, iterations=7)
         return
+    def erode_horizontal_lines(self, inverted_image : cv2.typing.MatLike) -> None:
+        ver = np.array([[1],
+            [1],
+            [1],
+            [1],
+            [1],
+            [1],
+            [1]])
+        self.horizontal_lines_eroded_image = cv2.erode(inverted_image, ver, iterations=5)
+        self.horizontal_lines_eroded_image = cv2.dilate(self.horizontal_lines_eroded_image, ver, iterations=7)
+        return
+    def combine_erroded_images(self) -> None:
+        self.combined_image = cv2.add(self.vertical_lines_eroded_image, self.horizontal_lines_eroded_image)
+        return
+    
+
+    def dilate_combined_image_to_make_lines_thicker(self) -> None:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        self.combined_image_dilated = cv2.dilate(self.combined_image, kernel, iterations=2)
+        return
+
+    def subtract_combined_and_dilated_image_from_original_image(self, inverted_image : cv2.typing.MatLike) -> None:
+        self.image_without_lines = cv2.subtract(inverted_image, self.combined_image_dilated)
+        return
+    
+    def remove_noise_with_erode_and_dilate(self) -> None:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=1)
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=2)
+        return
+    
+    def remove_table_lines(self, inverted_image : cv2.typing.MatLike) -> None:
+        self.erode_horizontal_lines(inverted_image)
+        self.erode_vertical_lines(inverted_image)
+        self.combine_erroded_images()
+        self.dilate_combined_image_to_make_lines_thicker()
+        self.subtract_combined_and_dilated_image_from_original_image(inverted_image)
+        self.remove_noise_with_erode_and_dilate()
+
+    # def show_image(self, type : ImageType) -> None:
+    #     match type:
+    #         case ImageType.ORIGINAL:
+    #             cv2.imshow('original_image', self.original_image)
+    #             return
+    #         case ImageType.PREPROCESSED:
+    #             cv2.imshow('preprocessed_image', self.preprocessed_image)
+    #         case _:
+    #             return
+    #     cv2.waitKey(0)
+    #     return
