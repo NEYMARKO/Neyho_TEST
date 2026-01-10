@@ -43,12 +43,22 @@ class MatchingStruct:
     bounds : tuple[float, float, float, float]
 
 DOCUMENT_LAYOUT = {
-    'type1': 
+    'Договор за засновање претплатнички однос за користење': 
     {
         'bounds': 
         [
-            {'table': (0,0)},
-            {'checkbox': (0,0)}
+            {
+                'table': [
+                    (0.075, 0.175),
+                    (0.925, 0.275)
+                ]
+            },
+            {
+                'checkbox': [
+                    (0.225, 0.175),
+                    (0.6, 0.25)
+                ]
+            }
         ]
     }
 }
@@ -116,35 +126,39 @@ class OcrHandler:
             case _:
                 return []
 
-def is_regular_pdf_page(page : pymupdf.Page) -> bool:
-    text_blocks = 0
-    image_blocks = 0
-    content = page.get_text("dict")
-    for b in content.get('blocks', []):
-        if (b['type'] == 0):
-            text_blocks += 1
-        elif (b['type'] == 1):
-            image_blocks += 1
-    print(f"{text_blocks=}")
-    print(f"{image_blocks=}")
-    return text_blocks > 0
 
-def split_document_with_rectangular_contours(img_path : str, section_cnt : int) -> None:
+def split_document_with_rectangular_contours(img_path : str, section_cnt : int, direction : int = 0) -> None:
     img = cv2.imread(img_path)
     width = img.shape[1]
     height = img.shape[0]
-    points = []
+    horizontal_contour_rects = []
+    vertical_contour_rects = []
     for i in range(1, section_cnt):
+        x_low = int(width * ((i - 1) / section_cnt))
+        x_high = int(width * (i / section_cnt))
         y_low = int(height * ((i - 1) / section_cnt))
         y_high = int(height * (i / section_cnt))
-        points+= [
+        rect = np.array(
+            [
             (0, y_low),
             (width, y_low),
             (width, y_high),
             (0, y_high)
-        ]
-    contours = np.array(points, dtype=np.int32).reshape((-1,1,2))
-    cv2.drawContours(img, [contours], -1, (0, 0, 255), 8)
+            ],
+            dtype=np.int32
+        ).reshape(-1,1,2)
+        horizontal_contour_rects.append(rect)
+        rect = np.array(
+            [
+            (x_low, 0),
+            (x_high, 0),
+            (x_high, height),
+            (x_low, height)
+            ],
+            dtype=np.int32
+        ).reshape(-1,1,2)
+        vertical_contour_rects.append(rect)
+    cv2.drawContours(img, horizontal_contour_rects if not direction else vertical_contour_rects, -1, (0, 0, 255), 8)
     cv2.imwrite(img_path[:-4] + "contours.png", img)
     return
 
@@ -166,7 +180,7 @@ def convert_img_to_pdf(page : pymupdf.Page) -> Path:
     # img = enhancer.enhance(1.5)
     img_path = f"{image_output_folder_path_obj.absolute()}/n.png"
     pix.save(str(img_path)) #---- THIS INTERFERES WITH CHECKBOX DETECTION SOMEHOW
-    split_document_with_rectangular_contours(img_path, 40)
+    # split_document_with_rectangular_contours(img_path, 40, 1)
     # img.save(img_path)
     # # remove_table_lines(img_path)
     # cfg = config.PipelinesConfig()
@@ -245,6 +259,19 @@ def match_expressions(matching_structs : list[MatchingStruct], file_content : st
     print(f"{result=}")
     modify_customer_type_info(result)
     return result
+
+def is_regular_pdf_page(page : pymupdf.Page) -> bool:
+    text_blocks = 0
+    image_blocks = 0
+    content = page.get_text("dict")
+    for b in content.get('blocks', []):
+        if (b['type'] == 0):
+            text_blocks += 1
+        elif (b['type'] == 1):
+            image_blocks += 1
+    print(f"{text_blocks=}")
+    print(f"{image_blocks=}")
+    return text_blocks > 0
 
 def main():
     root_folder_path_obj = Path(__file__).parent
