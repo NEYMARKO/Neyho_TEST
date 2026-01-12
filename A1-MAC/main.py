@@ -188,6 +188,28 @@ def get_number(digit_cnt : int, content : str) -> str:
         return match.group(0).strip()
     return ""
 
+#USED FOR OCR (FOR NOW)
+def extract_all_relevant_data(doc : pymupdf.Document) -> dict:
+    checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    print(f"{checkbox_content=}")
+    table_content = get_table_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    print(f"{table_content=}")
+    date = get_date(extract_content_from_page(doc[0]))
+    ban = get_number(9, extract_content_from_page(doc[0]))
+    embg_edb = get_number(13, table_content)
+    result = {"BAN": ban, "contract_date": date, "EMBG_EDB": embg_edb}
+    result.update(checkbox_content)
+    return result
+
+#USED FOR REGULAR PDF (FOR NOW)
+def extract_data(doc : pymupdf.Document) -> dict:
+    page = doc[0]
+    block = page.get_text("text", sort=True)
+    block = re.sub('\n', '  ', block) #It is necessary to map it to more than just 1 space (2 or higher)
+    block = re.sub(r' {2,}', ' ', block)
+    print(f"{block=}")
+    return {}
+
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     text_blocks = 0
     image_blocks = 0
@@ -210,16 +232,13 @@ def main():
     doc = pymupdf.open(Path(root_folder_path_obj / file_name))
     if not is_regular_pdf_page(doc[0]):
         doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name)
+        result = extract_all_relevant_data(doc) 
+    else:
+        extract_data(doc)
     if not doc:
         raise RuntimeError("Unable to read document!")
-    checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
-    print(f"{checkbox_content=}")
-    table_content = get_table_content(doc[0], "Договор за засновање претплатнички однос за користење")
-    print(f"{table_content=}")
-    get_date(extract_content_from_page(doc[0]))
-    print("BAN: ", get_number(9, extract_content_from_page(doc[0])))
-    print("EMBG_EDB: ", get_number(13, table_content))
-    # get_number()
+    # result = extract_all_relevant_data(doc) 
+    # print(f"{result=}")
     return
 
 if __name__ == "__main__":
