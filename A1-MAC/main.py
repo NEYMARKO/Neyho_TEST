@@ -211,7 +211,11 @@ def get_table_content(page : pymupdf.Page, title : str) -> str:
     preprocessed_image = tableExtractor.preprocess_till_invert(tableExtractor.perspective_corrected_image_with_padding)
     cv2.imwrite(Path() / "outputs/result/inverted_perspective.png", preprocessed_image)
     tableExtractor.remove_table_lines(preprocessed_image)
-    cv2.imwrite(Path() / "outputs/result/this_is_new.png", tableExtractor.image_without_lines_noise_removed)
+    result_path = Path() / "outputs/result/this_is_new.png"
+    cv2.imwrite(result_path, tableExtractor.image_without_lines_noise_removed)
+    doc = raw_img_to_pdf(result_path, Path(__file__).parent / "raw_img_to_pdf" / f"{result_path.stem}.pdf")
+    content = extract_content_from_page(doc[0])
+    print(f"{content=}")
     return ""
 
 def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
@@ -235,8 +239,30 @@ def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
     return img_path
 
 def extract_values_from_image(page : pymupdf.Page) -> None:
-
+    
     return
+
+def raw_img_to_pdf(src : Path, dest : Path) -> pymupdf.Document:
+    doc = fitz.open()
+    imgdoc = fitz.open(str(src))
+    pdfbytes = imgdoc.convert_to_pdf()
+    imgpdf = fitz.open("pdf", pdfbytes)
+    doc.insert_pdf(imgpdf)
+    doc.save(str(dest))
+    return doc
+
+def scanned_img_to_pdf(page : pymupdf.Page, dest : Path) -> pymupdf.Document:
+    image_list = page.get_images()
+    if not image_list:
+        raise RuntimeError("Unable to locate images on a page")
+    matrix = pymupdf.Matrix(4, 4)
+    pix = page.get_pixmap(matrix=matrix, alpha=False)
+    if pix.alpha:
+        pix.set_alpha(None)
+    # pix.save(str(dest))
+    doc_name = str(dest)[:-3] + "pdf"
+    pix.pdfocr_save(doc_name, language="mkd")
+    return pymupdf.open(str(dest))
 
 def convert_img_to_pdf(page : pymupdf.Page, name : str) -> Path:
     root_folder_path_obj = Path(__file__).parent
@@ -254,7 +280,7 @@ def convert_img_to_pdf(page : pymupdf.Page, name : str) -> Path:
     # img = enhancer.enhance(2)
     # enhancer = ImageEnhance.Sharpness(img)
     # img = enhancer.enhance(1.5)
-    img_path = f"{image_output_folder_path_obj.absolute()}/n.png"
+    img_path = name
     pix.save(str(img_path)) #---- THIS INTERFERES WITH CHECKBOX DETECTION SOMEHOW
     # split_document_with_rectangular_contours(img_path, 40, 1)
     # img.save(img_path)
@@ -336,7 +362,7 @@ def main():
     print(f"file name: {root_folder_path_obj}")
     doc_path = None
     if not is_regular_pdf_page(doc[0]):
-        doc_path = convert_img_to_pdf(doc[0], "a")
+        doc_path = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name)
     if doc_path:
         doc = pymupdf.open(doc_path)
     # checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
