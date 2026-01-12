@@ -1,5 +1,6 @@
 import re
 import cv2
+import fitz
 import pymupdf
 import numpy as np
 from pathlib import Path
@@ -56,7 +57,7 @@ DOCUMENT_LAYOUT = {
             {
                 'checkbox': [
                     (0.225, 0.175),
-                    (0.6, 0.25)
+                    (0.6, 0.21)
                 ]
             }
         ]
@@ -162,7 +163,36 @@ def split_document_with_rectangular_contours(img_path : str, section_cnt : int, 
     cv2.imwrite(img_path[:-4] + "contours.png", img)
     return
 
-def convert_img_to_pdf(page : pymupdf.Page) -> Path:
+
+def table_to_pdf() -> None:
+    return
+
+def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> None:
+    # doc_path = convert_img_to_pdf(orig_page, "checkbox.png")
+    # doc_name = "cropped_checkbox.pdf"
+    # page = fitz.open(doc_path)[0]
+    page_bounds = orig_page.bound()
+    width = page_bounds.width
+    height = page_bounds.height
+    print(f"width: {width}, height: {height}")
+    rect_bounds = []
+    bounds = DOCUMENT_LAYOUT.get(doc_title, {}).get('bounds', [])
+    for obj in bounds:
+        if element in obj:
+            b = obj.get(element, [])
+            rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
+            break
+    rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
+    print(f"{rect=}")
+    pix = orig_page.get_pixmap(clip=rect, dpi = 300)
+    pix.save(f"cropped_{element}.png")
+    return
+
+def extract_values_from_image(page : pymupdf.Page) -> None:
+
+    return
+
+def convert_img_to_pdf(page : pymupdf.Page, name : str) -> Path:
     root_folder_path_obj = Path(__file__).parent
     image_output_folder_path_obj = root_folder_path_obj / "imgs"
     image_list = page.get_images()
@@ -213,16 +243,13 @@ def convert_img_to_pdf(page : pymupdf.Page) -> Path:
     return Path(doc_name)
 
 def extract_content_from_page(page : pymupdf.Page) -> str:
-    # block = page.get_text("blocks", sort=True)
-    # for b in block:
-    #     print(b)
-    block = str(page.get_text("text", sort=True))
-    block = re.sub('\n', '  ', block) #It is necessary to map it to more than just 1 space (2 or higher)
+    text = str(page.get_text("text", sort=True))
+    text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
     # block = re.sub(r' {2,}', '\n', block)
-    block = re.sub(r' {2,}', ' ', block)
+    text = re.sub(r' {2,}', ' ', text)
     # block = re.sub(' +', '', block)
     # block = block.split("\n")
-    return block
+    return text
 
 def modify_customer_type_info(d : dict[str, str]) -> None:
     matched_string = d.get('customer_type_resident', 'CHECK KEY!!')
@@ -285,9 +312,11 @@ def main():
     print(f"file name: {root_folder_path_obj}")
     doc_path = None
     if not is_regular_pdf_page(doc[0]):
-        doc_path = convert_img_to_pdf(doc[0])
+        doc_path = convert_img_to_pdf(doc[0], "a")
     if doc_path:
         doc = pymupdf.open(doc_path)
+    crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'checkbox')
+    crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'table')
     # pdf_content = extract_content_from_page(doc[0])
     # ocrHandler = OcrHandler(file_name.split(".")[0])
     # for bound in ocrHandler.bounds:
