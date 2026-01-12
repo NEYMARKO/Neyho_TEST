@@ -6,6 +6,7 @@ from pathlib import Path
 class ImageType(Enum):
     ORIGINAL = 1
     PREPROCESSED = 2
+    
 class TableExtractor:
     def __init__(self, image_path : Path):
         self.original_image = cv2.imread(image_path.name)
@@ -116,8 +117,8 @@ class TableExtractor:
 
     def erode_vertical_lines(self, inverted_image : cv2.typing.MatLike) -> None:
         hor = np.array([[1,1,1,1,1,1]])
-        self.vertical_lines_eroded_image = cv2.erode(inverted_image, hor, iterations=5)
-        self.vertical_lines_eroded_image = cv2.dilate(self.vertical_lines_eroded_image, hor, iterations=7)
+        self.vertical_lines_eroded_image = cv2.erode(inverted_image, hor, iterations=15)
+        self.vertical_lines_eroded_image = cv2.dilate(self.vertical_lines_eroded_image, hor, iterations=10)
         return
     def erode_horizontal_lines(self, inverted_image : cv2.typing.MatLike) -> None:
         ver = np.array([[1],
@@ -127,8 +128,8 @@ class TableExtractor:
             [1],
             [1],
             [1]])
-        self.horizontal_lines_eroded_image = cv2.erode(inverted_image, ver, iterations=5)
-        self.horizontal_lines_eroded_image = cv2.dilate(self.horizontal_lines_eroded_image, ver, iterations=7)
+        self.horizontal_lines_eroded_image = cv2.erode(inverted_image, ver, iterations=12)
+        self.horizontal_lines_eroded_image = cv2.dilate(self.horizontal_lines_eroded_image, ver, iterations=10)
         return
     def combine_erroded_images(self) -> None:
         self.combined_image = cv2.add(self.vertical_lines_eroded_image, self.horizontal_lines_eroded_image)
@@ -136,8 +137,8 @@ class TableExtractor:
     
 
     def dilate_combined_image_to_make_lines_thicker(self) -> None:
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        self.combined_image_dilated = cv2.dilate(self.combined_image, kernel, iterations=2)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        self.combined_image_dilated = cv2.dilate(self.combined_image, kernel, iterations=7)
         return
 
     def subtract_combined_and_dilated_image_from_original_image(self, inverted_image : cv2.typing.MatLike) -> None:
@@ -146,15 +147,18 @@ class TableExtractor:
     
     def remove_noise_with_erode_and_dilate(self) -> None:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=1)
-        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=2)
+        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=3)
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=4)
         return
     
     def remove_table_lines(self, inverted_image : cv2.typing.MatLike) -> None:
         self.erode_horizontal_lines(inverted_image)
         self.erode_vertical_lines(inverted_image)
+        cv2.imwrite(Path() / "outputs/result/new_horizontal_erroded.png", self.horizontal_lines_eroded_image)
+        cv2.imwrite(Path() / "outputs/result/vertical_erroded.png", self.vertical_lines_eroded_image)
         self.combine_erroded_images()
         self.dilate_combined_image_to_make_lines_thicker()
+        cv2.imwrite(Path() / "outputs/result/combined_eroded.png", self.combined_image_dilated)
         self.subtract_combined_and_dilated_image_from_original_image(inverted_image)
         self.remove_noise_with_erode_and_dilate()
 

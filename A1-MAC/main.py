@@ -5,8 +5,9 @@ import pymupdf
 import numpy as np
 from pathlib import Path
 from boxdetect import config
-from boxdetect.pipelines import get_checkboxes
 from dataclasses import dataclass
+from boxdetect.pipelines import get_checkboxes
+from table_content_extractor import TableExtractor
 DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
                      'Договор за купопродажба на уреди со одложено плаќање на рати': [],
                      'Договор за користење на јавни комуникациски услуги': ['за користење на Јавни комуникациски услуги бр.', 'на ден', 'помеѓу', 
@@ -192,6 +193,27 @@ def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
+def get_table_content(page : pymupdf.Page, title : str) -> str:
+    img_path = crop_page(page, title, 'table')
+    tableExtractor = TableExtractor(img_path)
+    preprocessed_image = tableExtractor.preprocess_image()
+    # tableExtractor.show_image(ImageType.PREPROCESSED)
+    tableExtractor.find_contours(preprocessed_image)
+    tableExtractor.filter_contours_and_leave_only_rectangles()
+    tableExtractor.find_largest_contour_by_area()
+    # cv2.imwrite(Path() / "outputs/contours/contours.png", tableExtractor.image_with_contour_with_max_area)
+    # cv2.waitKey(0)
+    tableExtractor.order_points_in_the_contour_with_max_area()
+    tableExtractor.calculate_new_width_and_height_of_image()
+    tableExtractor.apply_perspective_transform()
+    tableExtractor.add_10_percent_padding()
+    cv2.imwrite(Path() / "outputs/contours/perspective.png", tableExtractor.perspective_corrected_image_with_padding)
+    preprocessed_image = tableExtractor.preprocess_till_invert(tableExtractor.perspective_corrected_image_with_padding)
+    cv2.imwrite(Path() / "outputs/result/inverted_perspective.png", preprocessed_image)
+    tableExtractor.remove_table_lines(preprocessed_image)
+    cv2.imwrite(Path() / "outputs/result/this_is_new.png", tableExtractor.image_without_lines_noise_removed)
+    return ""
+
 def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
     """
     Crops page using hardcoded bound values for given element and saves result to png.
@@ -317,8 +339,9 @@ def main():
         doc_path = convert_img_to_pdf(doc[0], "a")
     if doc_path:
         doc = pymupdf.open(doc_path)
-    checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
-    print(f"{checkbox_content=}")
+    # checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    table_content = get_table_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    # print(f"{checkbox_content=}")
     # crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'checkbox')
     # crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'table')
     # pdf_content = extract_content_from_page(doc[0])
