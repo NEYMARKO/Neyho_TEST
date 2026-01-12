@@ -13,6 +13,25 @@ class TableExtractor:
         self.root_output_folder = Path() / "outputs"
         self.preprocessed_output_folder = self.root_output_folder / "preprocessed"
 
+    def clear_table(self) -> None:
+        preprocessed_image = self.preprocess_image()
+        # tableExtractor.show_image(ImageType.PREPROCESSED)
+        self.find_contours(preprocessed_image)
+        self.filter_contours_and_leave_only_rectangles()
+        self.find_largest_contour_by_area()
+        # cv2.imwrite(Path() / "outputs/contours/contours.png", tableExtractor.image_with_contour_with_max_area)
+        # cv2.waitKey(0)
+        self.order_points_in_the_contour_with_max_area()
+        self.calculate_new_width_and_height_of_image()
+        self.apply_perspective_transform()
+        self.add_10_percent_padding()
+        cv2.imwrite(str(Path() / "outputs/contours/perspective.png"), self.perspective_corrected_image_with_padding)
+        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
+        self.remove_table_lines(preprocessed_image)
+        self.result_path = Path() / "outputs/result/result.png"
+        cv2.imwrite(str(self.result_path), self.image_without_lines_noise_removed)
+        return
+
     def preprocess_image(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
         inverted_img = self.preprocess_till_invert(input_image)
         dilated_img = cv2.dilate(inverted_img, None, iterations=5)

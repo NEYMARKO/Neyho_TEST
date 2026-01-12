@@ -5,7 +5,6 @@ import pymupdf
 import numpy as np
 from pathlib import Path
 from boxdetect import config
-from dataclasses import dataclass
 from boxdetect.pipelines import get_checkboxes
 from table_content_extractor import TableExtractor
 DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
@@ -26,25 +25,6 @@ regs = {'3': [
     r'(?<=ПРЕТПЛАТНИК)(.*)(?=правно лице)',
     r'ЕМБГ:\s+(\b[0-9]+\b)'
     ]}
-
-def create_regex_expression(preceding : str, following : str) -> str:
-    reg = ""
-    #keyword in middle
-    if preceding and following:
-        reg = f"(?<={preceding})(.*)(?={following})"
-    elif preceding and not following:
-        if '.' in preceding:
-            preceding= preceding.replace('.', '\\.')
-        reg = f"{preceding}\\s+(\\d+)"
-    return reg
-
-@dataclass
-class MatchingStruct:
-    keyword : str
-    preceding : str
-    following : str
-    re_expression : str
-    bounds : tuple[float, float, float, float]
 
 DOCUMENT_LAYOUT = {
     'Договор за засновање претплатнички однос за користење': 
@@ -67,156 +47,54 @@ DOCUMENT_LAYOUT = {
     }
 }
 
-class OcrHandler:
-    def __init__(self, title : str):
-        self.title = title
-        self.bounds = self.generate_matching_structs()
-    def generate_matching_structs(self) -> list[MatchingStruct]:
-        match self.title:
-            case 'Договор за засновање претплатнички однос за користење':
-                return [
-                    MatchingStruct(
-                        keyword='BAN',
-                        preceding='за користење на Јавни комуникациски услуги бр.',
-                        following='',
-                        re_expression=create_regex_expression(preceding='за користење на Јавни комуникациски услуги бр.', following=''),
-                        bounds=(149.89999389648438, 89.13378143310547, 418.451416015625, 100.3326644897461)
-                    ),
-                    MatchingStruct(
-                        keyword='date',
-                        preceding='на ден', 
-                        following='помеѓу',
-                        re_expression=create_regex_expression(preceding='на ден', following='помеѓу'),
-                        bounds=(150.13999938964844, 102.10941314697266, 333.99322509765625, 109.52684783935547)
-                    ),
-                    MatchingStruct(
-                        keyword='customer_type_resident',
-                        preceding='ПРЕТПЛАТНИК', 
-                        following='правно лице',
-                        re_expression=create_regex_expression(preceding='ПРЕТПЛАТНИК', following='правно лице'),
-                        bounds=(76.58399963378906, 143.26937866210938, 220.76547241210938, 150.68682861328125)
-                    ),
-                    MatchingStruct(
-                        keyword='customer_type_businnes',
-                        preceding='ПРЕТПЛАТНИК', 
-                        following='правно лице',
-                        re_expression=create_regex_expression(preceding='ПРЕТПЛАТНИК', following='правно лице'),
-                        bounds=(316.6099853515625, 143.26937866210938, 356.92291259765625, 150.68682861328125)
-                    ),
-                    MatchingStruct(
-                        keyword='EMBG_EDB',
-                        preceding='ПРЕТПЛАТНИК', 
-                        following='правно лице',
-                        re_expression=create_regex_expression(preceding='ЕМБГ:', following=''),
-                        bounds=(76.58399963378906, 177.46939086914062, 104.63197326660156, 184.8868408203125)
-                    )
-                    ]
-            case 'Договор за купопродажба на уреди со одложено плаќање на рати':
-                return [
-                    # KeywordBounds(keyword='a', preceding='b', following='c')
-                    ]
-            case 'Договор за користење на јавни комуникациски услуги':
-                return [
-                    # KeywordBounds(keyword='a', preceding='b', following='c')
-                    ]
-            case 'Договор за користење на јавни комуникациски услуги':
-                return [
-                    # KeywordBounds(keyword='a', preceding='b', following='c')
-                    ]
-            case 'БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК':
-                return [
-                    # KeywordBounds(keyword='a', preceding='b', following='c')
-                    ]
-            case _:
-                return []
+class VisualDebugger:
+    def __init__(self):
+        return
+    def plot_img(self):
+        return
+    def draw_img(self):
+        return
 
+    def split_document_with_rectangular_contours(self, img_path : str, section_cnt : int, direction : int = 0) -> None:
+        img = cv2.imread(img_path)
+        width = img.shape[1]
+        height = img.shape[0]
+        horizontal_contour_rects = []
+        vertical_contour_rects = []
+        for i in range(1, section_cnt):
+            x_low = int(width * ((i - 1) / section_cnt))
+            x_high = int(width * (i / section_cnt))
+            y_low = int(height * ((i - 1) / section_cnt))
+            y_high = int(height * (i / section_cnt))
+            rect = np.array(
+                [
+                (0, y_low),
+                (width, y_low),
+                (width, y_high),
+                (0, y_high)
+                ],
+                dtype=np.int32
+            ).reshape(-1,1,2)
+            horizontal_contour_rects.append(rect)
+            rect = np.array(
+                [
+                (x_low, 0),
+                (x_high, 0),
+                (x_high, height),
+                (x_low, height)
+                ],
+                dtype=np.int32
+            ).reshape(-1,1,2)
+            vertical_contour_rects.append(rect)
+        cv2.drawContours(img, horizontal_contour_rects if not direction else vertical_contour_rects, -1, (0, 0, 255), 8)
+        cv2.imwrite(img_path[:-4] + "contours.png", img)
+        return
 
-def split_document_with_rectangular_contours(img_path : str, section_cnt : int, direction : int = 0) -> None:
-    img = cv2.imread(img_path)
-    width = img.shape[1]
-    height = img.shape[0]
-    horizontal_contour_rects = []
-    vertical_contour_rects = []
-    for i in range(1, section_cnt):
-        x_low = int(width * ((i - 1) / section_cnt))
-        x_high = int(width * (i / section_cnt))
-        y_low = int(height * ((i - 1) / section_cnt))
-        y_high = int(height * (i / section_cnt))
-        rect = np.array(
-            [
-            (0, y_low),
-            (width, y_low),
-            (width, y_high),
-            (0, y_high)
-            ],
-            dtype=np.int32
-        ).reshape(-1,1,2)
-        horizontal_contour_rects.append(rect)
-        rect = np.array(
-            [
-            (x_low, 0),
-            (x_high, 0),
-            (x_high, height),
-            (x_low, height)
-            ],
-            dtype=np.int32
-        ).reshape(-1,1,2)
-        vertical_contour_rects.append(rect)
-    cv2.drawContours(img, horizontal_contour_rects if not direction else vertical_contour_rects, -1, (0, 0, 255), 8)
-    cv2.imwrite(img_path[:-4] + "contours.png", img)
-    return
-
-
-def table_to_pdf() -> None:
-    return
-
-def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
-    img_path = str(crop_page(page, title, 'checkbox').absolute())
-    cfg = config.PipelinesConfig()
-    cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
-    cfg.height_range = (70, 200)     # Should be similar to width for square boxes
-    cfg.scaling_factors = [0.7, 0.8, 0.9, 1.0, 1.1]
-    cfg.wh_ratio_range = (0.8, 1.2)  # Closer to square
-    cfg.group_size_range = (1, 5)
-    cfg.dilation_iterations = 0      # Start with 1, try 2 if needed
-    
-    checkboxes = get_checkboxes(
-        img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
-    )
-
-    if checkboxes.size == 0:
-        print("Unable to detect checkboxes, check cfg.width and height range")
-        return {}
-    
-    #sort using x coordinate => let checboxes go from left to right
-    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
-    is_resident = sorted_checkboxes[0][1]
-    return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
-
-def get_table_content(page : pymupdf.Page, title : str) -> str:
-    img_path = crop_page(page, title, 'table')
-    tableExtractor = TableExtractor(img_path)
-    preprocessed_image = tableExtractor.preprocess_image()
-    # tableExtractor.show_image(ImageType.PREPROCESSED)
-    tableExtractor.find_contours(preprocessed_image)
-    tableExtractor.filter_contours_and_leave_only_rectangles()
-    tableExtractor.find_largest_contour_by_area()
-    # cv2.imwrite(Path() / "outputs/contours/contours.png", tableExtractor.image_with_contour_with_max_area)
-    # cv2.waitKey(0)
-    tableExtractor.order_points_in_the_contour_with_max_area()
-    tableExtractor.calculate_new_width_and_height_of_image()
-    tableExtractor.apply_perspective_transform()
-    tableExtractor.add_10_percent_padding()
-    cv2.imwrite(Path() / "outputs/contours/perspective.png", tableExtractor.perspective_corrected_image_with_padding)
-    preprocessed_image = tableExtractor.preprocess_till_invert(tableExtractor.perspective_corrected_image_with_padding)
-    cv2.imwrite(Path() / "outputs/result/inverted_perspective.png", preprocessed_image)
-    tableExtractor.remove_table_lines(preprocessed_image)
-    result_path = Path() / "outputs/result/this_is_new.png"
-    cv2.imwrite(result_path, tableExtractor.image_without_lines_noise_removed)
-    doc = raw_img_to_pdf(result_path, Path(__file__).parent / "raw_img_to_pdf" / f"{result_path.stem}.pdf")
-    content = extract_content_from_page(doc[0])
-    print(f"{content=}")
-    return ""
+def extract_content_from_page(page : pymupdf.Page) -> str:
+    text = str(page.get_text("text", sort=True))
+    text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
+    text = re.sub(r' {2,}', ' ', text)
+    return text
 
 def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
     """
@@ -238,18 +116,14 @@ def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
     pix.save(img_path)
     return img_path
 
-def extract_values_from_image(page : pymupdf.Page) -> None:
-    
-    return
-
-def raw_img_to_pdf(src : Path, dest : Path) -> pymupdf.Document:
+def raw_img_to_pdf(img_src : Path, dest : Path) -> pymupdf.Document:
     doc = fitz.open()
-    imgdoc = fitz.open(str(src))
+    imgdoc = fitz.open(str(img_src))
     pdfbytes = imgdoc.convert_to_pdf()
     imgpdf = fitz.open("pdf", pdfbytes)
     doc.insert_pdf(imgpdf)
     doc.save(str(dest))
-    return doc
+    return scanned_img_to_pdf(doc[0], dest)
 
 def scanned_img_to_pdf(page : pymupdf.Page, dest : Path) -> pymupdf.Document:
     image_list = page.get_images()
@@ -264,78 +138,55 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest : Path) -> pymupdf.Document:
     pix.pdfocr_save(doc_name, language="mkd")
     return pymupdf.open(str(dest))
 
-def convert_img_to_pdf(page : pymupdf.Page, name : str) -> Path:
-    root_folder_path_obj = Path(__file__).parent
-    image_output_folder_path_obj = root_folder_path_obj / "imgs"
-    image_list = page.get_images()
-    if not image_list:
-        raise RuntimeError("Unable to locate images on a page")
-    matrix = pymupdf.Matrix(4, 4)
-    pix = page.get_pixmap(matrix=matrix, alpha=False)
-    if pix.alpha:
-        pix.set_alpha(None)
-    # img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    # img = img.convert('L')
-    # enhancer = ImageEnhance.Contrast(img)
-    # img = enhancer.enhance(2)
-    # enhancer = ImageEnhance.Sharpness(img)
-    # img = enhancer.enhance(1.5)
-    img_path = name
-    pix.save(str(img_path)) #---- THIS INTERFERES WITH CHECKBOX DETECTION SOMEHOW
-    # split_document_with_rectangular_contours(img_path, 40, 1)
-    # img.save(img_path)
-    # # remove_table_lines(img_path)
-    # cfg = config.PipelinesConfig()
-    # cfg.width_range = (30,55)
-    # cfg.height_range = (25, 40)
-    # cfg.scaling_factors = [0.7]
-    # cfg.wh_ratio_range= (0.5, 1.7)
-    # cfg.group_size_range = (2, 100)
-    # cfg.dilation_iterations = 0
-    # rects, grouping_rects, image, output_image = get_boxes(
-    #     img_path, cfg=cfg, plot=False
-    # )
-    # checkboxes = get_checkboxes(
-    #     img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=True
-    # )
-    # import matplotlib.pyplot as plt
-    # for checkbox in checkboxes:
-    #     print(f"Bounding rectangle: {checkbox[0]}")
-    #     print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
-    #     plt.figure(figsize=(1,1))
-    #     plt.imshow(checkbox[2])
-    #     plt.show()
-    # plt.figure(figsize=(20,20))
-    # plt.imshow(output_image)
-    # plt.show()
-    # py_tess_result = pytesseract.image_to_string(img, lang="mkd", config=r'--oem 3 --psm 10 ')
-    # print(f"{py_tess_result=}")
-    doc_name = str(img_path)[:-3] + "pdf"
-    pix.pdfocr_save(doc_name, language="mkd")
-    return Path(doc_name)
+def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
+    """
+    In case of not detecting checkboxes, check width and height range of
+    checkboxes in image -> can use any image viewer => good one: https://pixspy.com/ 
+    """
+    img_path = str(crop_page(page, title, 'checkbox').absolute())
+    cfg = config.PipelinesConfig()
+    cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
+    cfg.height_range = (70, 200)     # Should be similar to width for square boxes
+    cfg.scaling_factors = [0.7, 0.8, 0.9, 1.0, 1.1]
+    cfg.wh_ratio_range = (0.8, 1.2)  # Closer to square
+    cfg.group_size_range = (1, 5)
+    cfg.dilation_iterations = [0]      # Start with 1, try 2 if needed
+    
+    checkboxes = get_checkboxes(
+        img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
+    )
 
-def extract_content_from_page(page : pymupdf.Page) -> str:
-    text = str(page.get_text("text", sort=True))
-    text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
-    text = re.sub(r' {2,}', ' ', text)
-    return text
+    if checkboxes.size == 0:
+        print("Unable to detect checkboxes, check cfg.width and height range")
+        return {}
+    
+    #sort using x coordinate => let checboxes go from left to right
+    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
+    is_resident = sorted_checkboxes[0][1]
+    return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
-def match_expressions(matching_structs : list[MatchingStruct], file_content : str) -> dict[str, str | bool]:
-    result = {}
-    for struct in matching_structs:
-        # print(f"MATCHING expression: {struct.re_expression}")
-        match = re.search(struct.re_expression.lower(), file_content.lower(), re.DOTALL)
+def get_table_content(page : pymupdf.Page, title : str) -> str:
+    img_path = crop_page(page, title, 'table')
+    tableExtractor = TableExtractor(img_path)
+    tableExtractor.clear_table()
+    doc = raw_img_to_pdf(tableExtractor.result_path, Path(__file__).parent / "raw_img_to_pdf" / f"{tableExtractor.result_path.stem}.pdf")
+    return extract_content_from_page(doc[0])
+
+def get_date(file_content : str) -> str:
+    # print(f"{file_content=}")
+    for date_format in DATE_REGEXES:
+        match = re.search(date_format, file_content, re.DOTALL)
+        # print(f"{match=}")
         if match:
-            result[struct.keyword] = match.group(1).strip()
-            # print(f"{result=}")
-        else:
-            print("Entering modifier")
-            match = re.search(struct.re_expression.lower(), file_content.lower(), re.DOTALL)
-            if match:
-                result[struct.keyword] = match.group(1).strip()
-    # print(f"{matching_structs=}")
-    print(f"{result=}")
-    return result
+            return match.group(0).strip()
+    return ""
+
+def get_number(digit_cnt : int, content : str) -> str:
+    expression = "\\s\\d{" + str(digit_cnt) + "}\\s"
+    match = re.search(expression, content, re.DOTALL)
+    if match:
+        return match.group(0).strip()
+    return ""
 
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     text_blocks = 0
@@ -355,27 +206,20 @@ def main():
     file_name = ""
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
-            print(f"File name: {x.stem}, file name + type: {x.name}")
             file_name = x.name
-    # print(f"{file_path_obj=}")
     doc = pymupdf.open(Path(root_folder_path_obj / file_name))
-    print(f"file name: {root_folder_path_obj}")
-    doc_path = None
     if not is_regular_pdf_page(doc[0]):
-        doc_path = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name)
-    if doc_path:
-        doc = pymupdf.open(doc_path)
-    # checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
+        doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name)
+    if not doc:
+        raise RuntimeError("Unable to read document!")
+    checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    print(f"{checkbox_content=}")
     table_content = get_table_content(doc[0], "Договор за засновање претплатнички однос за користење")
-    # print(f"{checkbox_content=}")
-    # crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'checkbox')
-    # crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'table')
-    # pdf_content = extract_content_from_page(doc[0])
-    # ocrHandler = OcrHandler(file_name.split(".")[0])
-    # for bound in ocrHandler.bounds:
-    #     print(bound.re_expression)
-    # print(f"{pdf_content=}")
-    # print(f"{match_expressions(ocrHandler.bounds, pdf_content)=}")
+    print(f"{table_content=}")
+    get_date(extract_content_from_page(doc[0]))
+    print("BAN: ", get_number(9, extract_content_from_page(doc[0])))
+    print("EMBG_EDB: ", get_number(13, table_content))
+    # get_number()
     return
 
 if __name__ == "__main__":
