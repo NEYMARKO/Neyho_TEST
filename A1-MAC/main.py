@@ -5,7 +5,7 @@ import pymupdf
 import numpy as np
 from pathlib import Path
 from boxdetect import config
-from boxdetect.pipelines import get_boxes, get_checkboxes
+from boxdetect.pipelines import get_checkboxes
 from dataclasses import dataclass
 DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
                      'Договор за купопродажба на уреди со одложено плаќање на рати': [],
@@ -171,7 +171,6 @@ def table_to_pdf() -> None:
 
 def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
     img_path = str(crop_page(page, title, 'checkbox').absolute())
-    print(f"{img_path=}")
     cfg = config.PipelinesConfig()
     cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
     cfg.height_range = (70, 200)     # Should be similar to width for square boxes
@@ -180,34 +179,16 @@ def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
     cfg.group_size_range = (1, 5)
     cfg.dilation_iterations = 0      # Start with 1, try 2 if needed
     
-    rects, grouping_rects, image, output_image = get_boxes(
-        img_path, cfg=cfg, plot=False
-    )
-    print(f"{grouping_rects=}")
     checkboxes = get_checkboxes(
         img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
     )
 
-    import matplotlib.pyplot as plt 
-    #sort using x coordinate => let checboxes go from left to right
-    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
-    for checkbox in sorted_checkboxes:
-        print(f"Bounding rectangle: {checkbox[0]}")
-        print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
-        plt.figure(figsize=(1,1))
-        plt.imshow(checkbox[2])
-        plt.show()
-    plt.figure(figsize=(20,20))
-    plt.imshow(output_image)
-    plt.show()
-
-    bounding_rect_1 = checkboxes[0][0]
-    bounding_rect_2 = checkboxes[1][0]
-    if (bounding_rect_1[0] < bounding_rect_2[0]):
-
     if checkboxes.size == 0:
         print("Unable to detect checkboxes, check cfg.width and height range")
         return {}
+    
+    #sort using x coordinate => let checboxes go from left to right
+    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
