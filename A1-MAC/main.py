@@ -4,6 +4,8 @@ import fitz
 import pymupdf
 import numpy as np
 from pathlib import Path
+from boxdetect import config
+from boxdetect.pipelines import get_boxes, get_checkboxes
 from dataclasses import dataclass
 DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
                      'Договор за купопродажба на уреди со одложено плаќање на рати': [],
@@ -50,8 +52,8 @@ DOCUMENT_LAYOUT = {
         [
             {
                 'table': [
-                    (0.075, 0.175),
-                    (0.925, 0.275)
+                    (0.075, 0.185),
+                    (0.925, 0.265)
                 ]
             },
             {
@@ -167,14 +169,55 @@ def split_document_with_rectangular_contours(img_path : str, section_cnt : int, 
 def table_to_pdf() -> None:
     return
 
-def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> None:
-    # doc_path = convert_img_to_pdf(orig_page, "checkbox.png")
-    # doc_name = "cropped_checkbox.pdf"
-    # page = fitz.open(doc_path)[0]
+def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
+    img_path = str(crop_page(page, title, 'checkbox').absolute())
+    print(f"{img_path=}")
+    cfg = config.PipelinesConfig()
+    cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
+    cfg.height_range = (70, 200)     # Should be similar to width for square boxes
+    cfg.scaling_factors = [0.7, 0.8, 0.9, 1.0, 1.1]
+    cfg.wh_ratio_range = (0.8, 1.2)  # Closer to square
+    cfg.group_size_range = (1, 5)
+    cfg.dilation_iterations = 0      # Start with 1, try 2 if needed
+    
+    rects, grouping_rects, image, output_image = get_boxes(
+        img_path, cfg=cfg, plot=False
+    )
+    print(f"{grouping_rects=}")
+    checkboxes = get_checkboxes(
+        img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
+    )
+
+    import matplotlib.pyplot as plt 
+    #sort using x coordinate => let checboxes go from left to right
+    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
+    for checkbox in sorted_checkboxes:
+        print(f"Bounding rectangle: {checkbox[0]}")
+        print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
+        plt.figure(figsize=(1,1))
+        plt.imshow(checkbox[2])
+        plt.show()
+    plt.figure(figsize=(20,20))
+    plt.imshow(output_image)
+    plt.show()
+
+    bounding_rect_1 = checkboxes[0][0]
+    bounding_rect_2 = checkboxes[1][0]
+    if (bounding_rect_1[0] < bounding_rect_2[0]):
+
+    if checkboxes.size == 0:
+        print("Unable to detect checkboxes, check cfg.width and height range")
+        return {}
+    is_resident = sorted_checkboxes[0][1]
+    return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
+
+def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
+    """
+    Crops page using hardcoded bound values for given element and saves result to png.
+    """
     page_bounds = orig_page.bound()
     width = page_bounds.width
     height = page_bounds.height
-    print(f"width: {width}, height: {height}")
     rect_bounds = []
     bounds = DOCUMENT_LAYOUT.get(doc_title, {}).get('bounds', [])
     for obj in bounds:
@@ -183,10 +226,10 @@ def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> None:
             rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
             break
     rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
-    print(f"{rect=}")
     pix = orig_page.get_pixmap(clip=rect, dpi = 300)
-    pix.save(f"cropped_{element}.png")
-    return
+    img_path = Path().resolve() / f"cropped_{element}.png"
+    pix.save(img_path)
+    return img_path
 
 def extract_values_from_image(page : pymupdf.Page) -> None:
 
@@ -245,29 +288,8 @@ def convert_img_to_pdf(page : pymupdf.Page, name : str) -> Path:
 def extract_content_from_page(page : pymupdf.Page) -> str:
     text = str(page.get_text("text", sort=True))
     text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
-    # block = re.sub(r' {2,}', '\n', block)
     text = re.sub(r' {2,}', ' ', text)
-    # block = re.sub(' +', '', block)
-    # block = block.split("\n")
     return text
-
-def modify_customer_type_info(d : dict[str, str]) -> None:
-    matched_string = d.get('customer_type_resident', 'CHECK KEY!!')
-    print(f"{matched_string=}")
-    x_char_index = -1
-    try:
-        x_char_index = matched_string.index(chr(0x445)) #This is Macedonian/Cyrilic 'x'
-    except ValueError:
-        x_char_index = matched_string.index(chr(0x78)) #This is Lating 'x'
-    if x_char_index == -1:
-        raise RuntimeError("Customer type might not have been selected or character case mixed (lower - should be upper or reverse)")
-    elif x_char_index <= 0.2 * len(matched_string):
-        d['customer_type_resident'] = "X"
-        d['customer_type_businnes']  = ""
-    else:
-        d['customer_type_resident'] = ""
-        d['customer_type_businnes']  = "X"
-    return
 
 def match_expressions(matching_structs : list[MatchingStruct], file_content : str) -> dict[str, str | bool]:
     result = {}
@@ -284,7 +306,6 @@ def match_expressions(matching_structs : list[MatchingStruct], file_content : st
                 result[struct.keyword] = match.group(1).strip()
     # print(f"{matching_structs=}")
     print(f"{result=}")
-    modify_customer_type_info(result)
     return result
 
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
@@ -315,8 +336,10 @@ def main():
         doc_path = convert_img_to_pdf(doc[0], "a")
     if doc_path:
         doc = pymupdf.open(doc_path)
-    crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'checkbox')
-    crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'table')
+    checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    print(f"{checkbox_content=}")
+    # crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'checkbox')
+    # crop_page(doc[0], "Договор за засновање претплатнички однос за користење", 'table')
     # pdf_content = extract_content_from_page(doc[0])
     # ocrHandler = OcrHandler(file_name.split(".")[0])
     # for bound in ocrHandler.bounds:
