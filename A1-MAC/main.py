@@ -8,12 +8,6 @@ from pathlib import Path
 from boxdetect import config
 from boxdetect.pipelines import get_checkboxes
 from table_content_extractor import TableExtractor
-DOC_TYPE_KEYWORDS = {'Договор за засновање претплатнички однос за користење': [],
-                     'Договор за купопродажба на уреди со одложено плаќање на рати': [],
-                     'Договор за користење на јавни комуникациски услуги': ['за користење на Јавни комуникациски услуги бр.', 'на ден', 'помеѓу', 
-                                                                            '2. ПРЕТПЛАТНИК', 'физичко лице', 'правно лице', 'ЕМБГ'],
-                     'Договор за користење на јавни комуникациски услуги': [],
-                     'БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК': []}
 
 DATE_REGEXES = [
     "\\d{2}\\.\\d{2}.\\d{2,4}",
@@ -86,6 +80,41 @@ DOCUMENT_LAYOUT = {
                 'checkbox': [
                     (0.225, 0.175),
                     (0.6, 0.21)
+                ]
+            }
+        ]
+    },
+    DocType.TYPE_4: 
+    {
+        'bounds': 
+        [
+            {
+                'table': [
+                    (0.075, 0.185),
+                    (0.925, 0.265)
+                ]
+            },
+            {
+                'checkbox': [
+                    (0.225, 0.175),
+                    (0.6, 0.21)
+                ]
+            }
+        ]
+    },
+    DocType.TYPE_5: 
+    {
+        'bounds': 
+        [
+            {
+                'table': [
+                    
+                ]
+            },
+            {
+                'checkbox': [
+                    (0.225, 0.15),
+                    (0.6, 0.2)
                 ]
             }
         ]
@@ -279,7 +308,6 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
         match = re.search(expression, content, re.DOTALL)
         if match:
             result["contract_date"] = match.group(1)
-    print(f"REGEX: {DOCUMENT_REGEXES.get(doc_type, {}).get("BAN", "WHAAAAT")}")
     ban_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("BAN", ""), content, re.DOTALL)
     if ban_match:
         result["BAN"] = ban_match.group(1)
@@ -289,17 +317,14 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
     if customer_type_match:
         matched_string = customer_type_match.group(0).strip().lower()
-        matched_list = list(matched_string)
         is_resident = False
-        # print(f"{matched_list=}")
-        # print(f"{ord(matched_list[0])=}")
-        try:
-            is_resident = matched_list.index(chr(0x445)) == 0 #Chirylic 'x'
-        except ValueError:
-            is_resident = matched_list.index(chr(0x78)) == 0 #Latin 'x'
+        possible_check_marks = [chr(0x455), chr(0x78)]
+        all_mark_positions = (matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks)))
+        if all(var == -1 for var in all_mark_positions):
+            raise ValueError("Unable to detect checked box")
+        is_resident = any(var == 0 for var in all_mark_positions)
         result["customer_type_resident"] = is_resident
         result["customer_type_businness"] = not is_resident
-    # print(f"{result=}")
     return result
 
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
@@ -323,11 +348,9 @@ def main():
         if x.is_file() and x.name.endswith("pdf"):
             file_basename = x.stem
             file_name_with_extension = x.name
-    print(f"{file_basename=}")
+    doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
     doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
     result = None
-    doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-    print(f"{doc_type=}")
     if not is_regular_pdf_page(doc[0]):
         doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name_with_extension)
         result = extract_all_relevant_data(doc, doc_type) 
