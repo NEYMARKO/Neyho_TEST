@@ -3,6 +3,7 @@ import cv2
 import fitz
 import pymupdf
 import numpy as np
+from enum import Enum
 from pathlib import Path
 from boxdetect import config
 from boxdetect.pipelines import get_checkboxes
@@ -26,8 +27,52 @@ regs = {'3': [
     r'ЕМБГ:\s+(\b[0-9]+\b)'
     ]}
 
+class DocType(Enum):
+    TYPE_1 = 1
+    TYPE_2 = 2
+    TYPE_3 = 3
+    TYPE_4 = 4
+    TYPE_5 = 5
+    UNDEFINED = -1
+
+DOC_NAME_TO_TYPE_MAP = {
+    "Договор за засновање претплатнички однос за користење": DocType.TYPE_1,
+    "Договор за купопродажба на уреди со одложено плаќање на рати": DocType.TYPE_2,
+    "Договор за користење на јавни комуникациски услуги": DocType.TYPE_3,
+    "Договор за користење на јавни комуникациски услуги ---- CHANGE MEEEEEE": DocType.TYPE_4,
+    "БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК": DocType.TYPE_5
+}
+
 DOCUMENT_LAYOUT = {
-    'Договор за засновање претплатнички однос за користење': 
+    DocType.TYPE_1:
+    {
+        'bounds':
+        [
+            {
+                'table': [
+
+                ],
+                'checbox': [
+
+                ]
+            }
+        ]
+    },
+    DocType.TYPE_2:
+    {
+        'bounds':
+        [
+            {
+                'table': [
+
+                ],
+                'checbox': [
+                    
+                ]
+            }
+        ]
+    },
+    DocType.TYPE_3: 
     {
         'bounds': 
         [
@@ -48,7 +93,7 @@ DOCUMENT_LAYOUT = {
 }
 
 DOCUMENT_REGEXES = {
-    'Договор за засновање претплатнички однос за користење': 
+    DocType.TYPE_3: 
     {
         "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
         "contract_date": [
@@ -57,7 +102,16 @@ DOCUMENT_REGEXES = {
         ],
         "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)" ,
         "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13})"
-    }
+    },
+    # 'Договор за купопродажба на уреди со одложено плаќање на рати':
+    # {
+    #     "BAN": ,
+    #     "contract_date": [
+
+    #     ],
+    #     "customer_type": ,
+    #     "EMBG_EDB": 
+    # }
 }
 
 class VisualDebugger:
@@ -109,7 +163,7 @@ def extract_content_from_page(page : pymupdf.Page) -> str:
     text = re.sub(r' {2,}', ' ', text)
     return text
 
-def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
+def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Path:
     """
     Crops page using hardcoded bound values for given element and saves result to png.
     """
@@ -117,7 +171,7 @@ def crop_page(orig_page : pymupdf.Page, doc_title : str, element : str) -> Path:
     width = page_bounds.width
     height = page_bounds.height
     rect_bounds = []
-    bounds = DOCUMENT_LAYOUT.get(doc_title, {}).get('bounds', [])
+    bounds = DOCUMENT_LAYOUT.get(doc_type, {}).get('bounds', [])
     for obj in bounds:
         if element in obj:
             b = obj.get(element, [])
@@ -151,12 +205,12 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest : Path) -> pymupdf.Document:
     pix.pdfocr_save(doc_name, language="mkd")
     return pymupdf.open(str(dest))
 
-def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
+def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, bool]:
     """
     In case of not detecting checkboxes, check width and height range of
     checkboxes in image -> can use any image viewer => good one: https://pixspy.com/ 
     """
-    img_path = str(crop_page(page, title, 'checkbox').absolute())
+    img_path = str(crop_page(page, doc_type, 'checkbox').absolute())
     cfg = config.PipelinesConfig()
     cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
     cfg.height_range = (70, 200)     # Should be similar to width for square boxes
@@ -178,8 +232,8 @@ def get_checkbox_content(page : pymupdf.Page, title : str) -> dict[str, bool]:
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
-def get_table_content(page : pymupdf.Page, title : str) -> str:
-    img_path = crop_page(page, title, 'table')
+def get_table_content(page : pymupdf.Page, doc_type : DocType) -> str:
+    img_path = crop_page(page, doc_type, 'table')
     tableExtractor = TableExtractor(img_path)
     tableExtractor.clear_table()
     doc = raw_img_to_pdf(tableExtractor.result_path, Path(__file__).parent / "raw_img_to_pdf" / f"{tableExtractor.result_path.stem}.pdf")
@@ -194,60 +248,59 @@ def get_date(file_content : str) -> str:
             return match.group(0).strip()
     return ""
 
-def get_number(digit_cnt : int, content : str) -> str:
-    expression = "\\s\\d{" + str(digit_cnt) + "}\\s"
+def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
+    expression = "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\s"
+    # print(f"{expression=}")
     match = re.search(expression, content, re.DOTALL)
+    # print(f"CONTENT TO MATCH: {content}")
     if match:
+        # print(f"Number match: {match}")
         return match.group(0).strip()
     return ""
 
 #USED FOR OCR (FOR NOW)
-def extract_all_relevant_data(doc : pymupdf.Document) -> dict:
-    checkbox_content = get_checkbox_content(doc[0], "Договор за засновање претплатнички однос за користење")
+def extract_all_relevant_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
+    checkbox_content = get_checkbox_content(doc[0], doc_type)
     print(f"{checkbox_content=}")
-    table_content = get_table_content(doc[0], "Договор за засновање претплатнички однос за користење")
+    table_content = get_table_content(doc[0], doc_type)
     print(f"{table_content=}")
     date = get_date(extract_content_from_page(doc[0]))
-    ban = get_number(9, extract_content_from_page(doc[0]))
-    embg_edb = get_number(13, table_content)
+    ban = get_number(9, 10, extract_content_from_page(doc[0]))
+    embg_edb = get_number(8, 14, table_content)
     result = {"BAN": ban, "contract_date": date, "EMBG_EDB": embg_edb}
     result.update(checkbox_content)
     return result
 
 #USED FOR REGULAR PDF (FOR NOW)
-def extract_data(doc : pymupdf.Document, doc_title : str) -> dict:
-    page = doc[0]
-    block = page.get_text("text", sort=True)
-    block = re.sub('\n', '  ', block) #It is necessary to map it to more than just 1 space (2 or higher)
-    block = re.sub(r' {2,}', ' ', block)
-    print(f"{block=}")
-    
+def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
+    content = extract_content_from_page(doc[0])
     result = {}
-    for expression in DOCUMENT_REGEXES.get(doc_title, {}).get("contract_date", []):
-        match = re.search(expression, block, re.DOTALL)
+    for expression in DOCUMENT_REGEXES.get(doc_type, {}).get("contract_date", []):
+        match = re.search(expression, content, re.DOTALL)
         if match:
             result["contract_date"] = match.group(1)
-    ban_match = re.search(DOCUMENT_REGEXES.get(doc_title, {}).get("BAN", ""), block, re.DOTALL)
+    print(f"REGEX: {DOCUMENT_REGEXES.get(doc_type, {}).get("BAN", "WHAAAAT")}")
+    ban_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("BAN", ""), content, re.DOTALL)
     if ban_match:
         result["BAN"] = ban_match.group(1)
-    embg_edb_match = re.search(DOCUMENT_REGEXES.get(doc_title, {}).get("EMBG_EDB", ""), block, re.DOTALL)
+    embg_edb_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("EMBG_EDB", ""), content, re.DOTALL)
     if embg_edb_match:
         result["EMBG_EDB"] = embg_edb_match.group(1)
-    customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_title, {}).get("customer_type", ""), block, re.DOTALL)
+    customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
     if customer_type_match:
         matched_string = customer_type_match.group(0).strip().lower()
         matched_list = list(matched_string)
         is_resident = False
-        print(f"{matched_list=}")
-        print(f"{ord(matched_list[0])=}")
+        # print(f"{matched_list=}")
+        # print(f"{ord(matched_list[0])=}")
         try:
-            is_resident = matched_list.index(chr(0x445)) == 0
+            is_resident = matched_list.index(chr(0x445)) == 0 #Chirylic 'x'
         except ValueError:
-            is_resident = matched_list.index(chr(0x78)) == 0
+            is_resident = matched_list.index(chr(0x78)) == 0 #Latin 'x'
         result["customer_type_resident"] = is_resident
         result["customer_type_businness"] = not is_resident
-    print(f"{result=}")
-    return {}
+    # print(f"{result=}")
+    return result
 
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     text_blocks = 0
@@ -264,20 +317,26 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
 
 def main():
     root_folder_path_obj = Path(__file__).parent
-    file_name = ""
+    file_basename = ""
+    file_name_with_extension = ""
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
-            file_name = x.name
-    doc = pymupdf.open(Path(root_folder_path_obj / file_name))
+            file_basename = x.stem
+            file_name_with_extension = x.name
+    print(f"{file_basename=}")
+    doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
+    result = None
+    doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
+    print(f"{doc_type=}")
     if not is_regular_pdf_page(doc[0]):
-        doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name)
-        result = extract_all_relevant_data(doc) 
+        doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name_with_extension)
+        result = extract_all_relevant_data(doc, doc_type) 
     else:
-        extract_data(doc, "Договор за засновање претплатнички однос за користење")
+        result = extract_data(doc, doc_type)
     if not doc:
         raise RuntimeError("Unable to read document!")
     # result = extract_all_relevant_data(doc) 
-    # print(f"{result=}")
+    print(f"{result=}")
     return
 
 if __name__ == "__main__":
