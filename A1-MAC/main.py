@@ -47,6 +47,19 @@ DOCUMENT_LAYOUT = {
     }
 }
 
+DOCUMENT_REGEXES = {
+    'Договор за засновање претплатнички однос за користење': 
+    {
+        "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
+        "contract_date": [
+            "на ден\\s(\\d{2}\\.\\d{2}\\.\\d{2,4})\\sпомеѓу",
+            "на ден\\s(\\d{2}\\-\\d{2}\\-\\d{2,4})\\sпомеѓу",
+        ],
+        "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)" ,
+        "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13})"
+    }
+}
+
 class VisualDebugger:
     def __init__(self):
         return
@@ -202,12 +215,38 @@ def extract_all_relevant_data(doc : pymupdf.Document) -> dict:
     return result
 
 #USED FOR REGULAR PDF (FOR NOW)
-def extract_data(doc : pymupdf.Document) -> dict:
+def extract_data(doc : pymupdf.Document, doc_title : str) -> dict:
     page = doc[0]
     block = page.get_text("text", sort=True)
     block = re.sub('\n', '  ', block) #It is necessary to map it to more than just 1 space (2 or higher)
     block = re.sub(r' {2,}', ' ', block)
     print(f"{block=}")
+    
+    result = {}
+    for expression in DOCUMENT_REGEXES.get(doc_title, {}).get("contract_date", []):
+        match = re.search(expression, block, re.DOTALL)
+        if match:
+            result["contract_date"] = match.group(1)
+    ban_match = re.search(DOCUMENT_REGEXES.get(doc_title, {}).get("BAN", ""), block, re.DOTALL)
+    if ban_match:
+        result["BAN"] = ban_match.group(1)
+    embg_edb_match = re.search(DOCUMENT_REGEXES.get(doc_title, {}).get("EMBG_EDB", ""), block, re.DOTALL)
+    if embg_edb_match:
+        result["EMBG_EDB"] = embg_edb_match.group(1)
+    customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_title, {}).get("customer_type", ""), block, re.DOTALL)
+    if customer_type_match:
+        matched_string = customer_type_match.group(0).strip().lower()
+        matched_list = list(matched_string)
+        is_resident = False
+        print(f"{matched_list=}")
+        print(f"{ord(matched_list[0])=}")
+        try:
+            is_resident = matched_list.index(chr(0x445)) == 0
+        except ValueError:
+            is_resident = matched_list.index(chr(0x78)) == 0
+        result["customer_type_resident"] = is_resident
+        result["customer_type_businness"] = not is_resident
+    print(f"{result=}")
     return {}
 
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
@@ -234,7 +273,7 @@ def main():
         doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name)
         result = extract_all_relevant_data(doc) 
     else:
-        extract_data(doc)
+        extract_data(doc, "Договор за засновање претплатнички однос за користење")
     if not doc:
         raise RuntimeError("Unable to read document!")
     # result = extract_all_relevant_data(doc) 
