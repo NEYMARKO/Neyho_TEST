@@ -54,10 +54,14 @@ DOCUMENT_LAYOUT = {
         [
             {
                 'table': [
-
-                ],
-                'checbox': [
-                    
+                    (0.065, 0.25),
+                    (0.925, 0.4)
+                ]
+            },
+            {
+                'checkbox': [
+                    (0.225, 0.175),
+                    (0.6, 0.21)
                 ]
             }
         ]
@@ -75,7 +79,7 @@ DOCUMENT_LAYOUT = {
             {
                 'checkbox': [
                     (0.225, 0.175),
-                    (0.6, 0.21)
+                    (0.6, 0.225)
                 ]
             }
         ]
@@ -136,6 +140,19 @@ DOCUMENT_REGEXES = {
         "contract_date": DATE_REGEXES,
         "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)" ,
         "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13})"
+    }
+}
+
+CONFIG = {
+    DocType.TYPE_2: 
+    {
+        "clear_table": False,
+        "has_checkbox": False
+    },
+    DocType.TYPE_3: 
+    {
+        "clear_table": True,
+        "has_checkbox": True
     }
 }
 
@@ -203,6 +220,7 @@ def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Pa
             b = obj.get(element, [])
             rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
             break
+    print(f"{rect_bounds=}")
     rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
     pix = orig_page.get_pixmap(clip=rect, dpi = 300)
     img_path = Path().resolve() / f"cropped_{element}.png"
@@ -233,6 +251,10 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest_folder : Path, file_name : str)
         dest_folder.mkdir(parents=True, exist_ok=True)
     doc_path = str(dest_folder / file_name)
     pix.pdfocr_save(doc_path, language="mkd")
+    img_path = Path(__file__).parent / "initial_img_.png"
+    pix.save(str(img_path))
+    debugger = VisualDebugger()
+    debugger.split_document_with_rectangular_contours(str(img_path), 40, 0)
     return pymupdf.open(str(doc_path))
 
 def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, bool]:
@@ -266,7 +288,8 @@ def get_table_content(page : pymupdf.Page, doc_type : DocType, file_basename : s
     img_path = crop_page(page, doc_type, 'table')
     tableExtractor = TableExtractor(img_path)
     tableExtractor.clear_table()
-    doc = raw_img_to_pdf(tableExtractor.result_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
+    result_img_path = tableExtractor.result_path if CONFIG.get(doc_type, {}).get("clear_table") else img_path 
+    doc = raw_img_to_pdf(result_img_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
     return extract_content_from_page(doc[0])
 
 def get_date(file_content : str) -> str:
@@ -284,19 +307,26 @@ def get_date(file_content : str) -> str:
     return date_string
 
 def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
-    expression = "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\s"
+    expressions = [
+        "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\s",
+        "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\.\\s",
+        "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\,\\s",
+    ]
     # print(f"{expression=}")
-    match = re.search(expression, content, re.DOTALL)
-    # print(f"CONTENT TO MATCH: {content}")
-    if match:
-        # print(f"Number match: {match}")
-        return match.group(0).strip()
+    for expression in expressions:
+        match = re.search(expression, content, re.DOTALL)
+        # print(f"CONTENT TO MATCH: {content}")
+        if match:
+            # print(f"Number match: {match}")
+            return match.group(0).strip().replace('.', '').replace(',', '')
     return ""
 
 #USED FOR OCR (FOR NOW)
 def extract_all_relevant_data(doc : pymupdf.Document, doc_type : DocType, file_basename : str) -> dict:
-    checkbox_content = get_checkbox_content(doc[0], doc_type)
-    print(f"{checkbox_content=}")
+    checkbox_content = {}
+    if CONFIG.get(doc_type, {}).get("has_checkbox"):
+        checkbox_content = get_checkbox_content(doc[0], doc_type)
+        print(f"{checkbox_content=}")
     table_content = get_table_content(doc[0], doc_type, file_basename)
     print(f"{table_content=}")
     date = get_date(extract_content_from_page(doc[0]))
@@ -313,7 +343,7 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     for expression in DOCUMENT_REGEXES.get(doc_type, {}).get("contract_date", []):
         match = re.search(expression, content, re.DOTALL)
         if match:
-            result["contract_date"] = match.group(1)
+            result["contract_date"] = match.group(0)
     ban_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("BAN", ""), content, re.DOTALL)
     if ban_match:
         result["BAN"] = ban_match.group(1)
@@ -349,7 +379,7 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2/DEBUG"
     file_basename = ""
     file_name_with_extension = ""
     for x in root_folder_path_obj.iterdir():
@@ -358,17 +388,16 @@ def main():
             file_basename = x.stem
             file_name_with_extension = x.name
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = DocType.TYPE_3
+            doc_type = DocType.TYPE_2
             doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
             result = None
             if not is_regular_pdf_page(doc[0]):
-                doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_basename, "scanned_img.pdf")
+                doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / file_basename, "scanned_img.pdf")
                 result = extract_all_relevant_data(doc, doc_type, file_basename) 
             else:
                 result = extract_data(doc, doc_type)
             if not doc:
                 raise RuntimeError("Unable to read document!")
-            # result = extract_all_relevant_data(doc) 
             print(f"{result=}")
     return
 
