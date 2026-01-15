@@ -6,13 +6,9 @@ import numpy as np
 from enum import Enum
 from pathlib import Path
 from boxdetect import config
+from itertools import product
 from boxdetect.pipelines import get_checkboxes
 from table_content_extractor import TableExtractor
-
-DATE_REGEXES = [
-    "\\d{2}\\.\\d{2}.\\d{2,4}",
-    "\\d{2}\\-\\d{2}-\\d{2,4}"
-]
 
 regs = {'3': [
     r'бр\.\s*(\d+)',
@@ -121,26 +117,26 @@ DOCUMENT_LAYOUT = {
     }
 }
 
+def generate_all_date_regex_combinations() -> list[tuple[str]]:
+    denumerators = [".", ",", "-"]
+    size = 2
+    date_regexes = []
+    cartesian_product = list(product(denumerators, repeat=size))
+    # print(f"{cartesian_product=}")
+    for prod in cartesian_product:
+        date_regexes.append("\\d{2}" + f"\\{prod[0]}" + "\\d{2}" + f"\\{prod[1]}" + "\\d{2,4}")
+    return date_regexes
+
+DATE_REGEXES = generate_all_date_regex_combinations()
+
 DOCUMENT_REGEXES = {
     DocType.TYPE_3: 
     {
         "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
-        "contract_date": [
-            "на ден\\s(\\d{2}\\.\\d{2}\\.\\d{2,4})\\sпомеѓу",
-            "на ден\\s(\\d{2}\\-\\d{2}\\-\\d{2,4})\\sпомеѓу",
-        ],
+        "contract_date": DATE_REGEXES,
         "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)" ,
         "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13})"
-    },
-    # 'Договор за купопродажба на уреди со одложено плаќање на рати':
-    # {
-    #     "BAN": ,
-    #     "contract_date": [
-
-    #     ],
-    #     "customer_type": ,
-    #     "EMBG_EDB": 
-    # }
+    }
 }
 
 class VisualDebugger:
@@ -190,6 +186,7 @@ def extract_content_from_page(page : pymupdf.Page) -> str:
     text = str(page.get_text("text", sort=True))
     text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
     text = re.sub(r' {2,}', ' ', text)
+    # print(f"{text=}")
     return text
 
 def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Path:
@@ -212,16 +209,18 @@ def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Pa
     pix.save(img_path)
     return img_path
 
-def raw_img_to_pdf(img_src : Path, dest : Path) -> pymupdf.Document:
+def raw_img_to_pdf(img_src : Path, dest_folder : Path, file_name : str) -> pymupdf.Document:
     doc = fitz.open()
     imgdoc = fitz.open(str(img_src))
     pdfbytes = imgdoc.convert_to_pdf()
     imgpdf = fitz.open("pdf", pdfbytes)
     doc.insert_pdf(imgpdf)
-    doc.save(str(dest))
-    return scanned_img_to_pdf(doc[0], dest)
+    if not dest_folder.exists() and not dest_folder.is_dir():
+        dest_folder.mkdir(parents=True, exist_ok=True)
+    doc.save(str(dest_folder / file_name))
+    return scanned_img_to_pdf(doc[0], dest_folder, file_name)
 
-def scanned_img_to_pdf(page : pymupdf.Page, dest : Path) -> pymupdf.Document:
+def scanned_img_to_pdf(page : pymupdf.Page, dest_folder : Path, file_name : str) -> pymupdf.Document:
     image_list = page.get_images()
     if not image_list:
         raise RuntimeError("Unable to locate images on a page")
@@ -230,9 +229,11 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest : Path) -> pymupdf.Document:
     if pix.alpha:
         pix.set_alpha(None)
     # pix.save(str(dest))
-    doc_name = str(dest)[:-3] + "pdf"
-    pix.pdfocr_save(doc_name, language="mkd")
-    return pymupdf.open(str(dest))
+    if not dest_folder.exists() and not dest_folder.is_dir():
+        dest_folder.mkdir(parents=True, exist_ok=True)
+    doc_path = str(dest_folder / file_name)
+    pix.pdfocr_save(doc_path, language="mkd")
+    return pymupdf.open(str(doc_path))
 
 def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, bool]:
     """
@@ -261,21 +262,26 @@ def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, b
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
-def get_table_content(page : pymupdf.Page, doc_type : DocType) -> str:
+def get_table_content(page : pymupdf.Page, doc_type : DocType, file_basename : str) -> str:
     img_path = crop_page(page, doc_type, 'table')
     tableExtractor = TableExtractor(img_path)
     tableExtractor.clear_table()
-    doc = raw_img_to_pdf(tableExtractor.result_path, Path(__file__).parent / "raw_img_to_pdf" / f"{tableExtractor.result_path.stem}.pdf")
+    doc = raw_img_to_pdf(tableExtractor.result_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
     return extract_content_from_page(doc[0])
 
 def get_date(file_content : str) -> str:
-    # print(f"{file_content=}")
+    date_string = ""
     for date_format in DATE_REGEXES:
         match = re.search(date_format, file_content, re.DOTALL)
         # print(f"{match=}")
         if match:
-            return match.group(0).strip()
-    return ""
+            date_string = match.group(0).strip()
+            break
+    if ',' in date_string:
+        date_string = date_string.replace(',', '.')
+    if '-' in date_string:
+        date_string = date_string.replace('-', '.')
+    return date_string
 
 def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
     expression = "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\s"
@@ -288,10 +294,10 @@ def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
     return ""
 
 #USED FOR OCR (FOR NOW)
-def extract_all_relevant_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
+def extract_all_relevant_data(doc : pymupdf.Document, doc_type : DocType, file_basename : str) -> dict:
     checkbox_content = get_checkbox_content(doc[0], doc_type)
     print(f"{checkbox_content=}")
-    table_content = get_table_content(doc[0], doc_type)
+    table_content = get_table_content(doc[0], doc_type, file_basename)
     print(f"{table_content=}")
     date = get_date(extract_content_from_page(doc[0]))
     ban = get_number(9, 10, extract_content_from_page(doc[0]))
@@ -317,9 +323,11 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
     if customer_type_match:
         matched_string = customer_type_match.group(0).strip().lower()
+        print(f"{matched_string=}")
         is_resident = False
         possible_check_marks = [chr(0x455), chr(0x78)]
-        all_mark_positions = (matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks)))
+        all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
+        print(f"{all_mark_positions=}")
         if all(var == -1 for var in all_mark_positions):
             raise ValueError("Unable to detect checked box")
         is_resident = any(var == 0 for var in all_mark_positions)
@@ -341,25 +349,27 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
     file_basename = ""
     file_name_with_extension = ""
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
+            print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             file_basename = x.stem
             file_name_with_extension = x.name
-    doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-    doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
-    result = None
-    if not is_regular_pdf_page(doc[0]):
-        doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_name_with_extension)
-        result = extract_all_relevant_data(doc, doc_type) 
-    else:
-        result = extract_data(doc, doc_type)
-    if not doc:
-        raise RuntimeError("Unable to read document!")
-    # result = extract_all_relevant_data(doc) 
-    print(f"{result=}")
+            # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
+            doc_type = DocType.TYPE_3
+            doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
+            result = None
+            if not is_regular_pdf_page(doc[0]):
+                doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / file_basename, "scanned_img.pdf")
+                result = extract_all_relevant_data(doc, doc_type, file_basename) 
+            else:
+                result = extract_data(doc, doc_type)
+            if not doc:
+                raise RuntimeError("Unable to read document!")
+            # result = extract_all_relevant_data(doc) 
+            print(f"{result=}")
     return
 
 if __name__ == "__main__":
