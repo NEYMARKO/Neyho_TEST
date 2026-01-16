@@ -199,6 +199,59 @@ class VisualDebugger:
         cv2.imwrite(img_path[:-4] + "contours.png", img)
         return
 
+
+def straightenImage(img_path : Path, save : bool=False) -> Path:
+    image = cv2.imread(str(img_path))
+    
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=10)
+
+    (h, w) = image.shape[:2]
+    min_length = 0.1 * w
+
+    filtered_lines = []
+    angles = []
+
+    if lines is not None:
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            if length > min_length:
+                # Calculate the angle of the line
+                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+                if -45 <= angle <= 45:  # Near-horizontal lines only
+                    filtered_lines.append((x1, y1, x2, y2, length))
+                    angles.append((angle, length))
+
+    # Calculate the weighted average angle of the filtered lines
+    if angles:
+        total_weight = sum(weight for _, weight in angles)
+        average_angle = sum(angle * weight for angle, weight in angles) / total_weight
+    else:
+        average_angle = 0  # No lines detected, assume no rotation needed
+    # Rotate the image based on the average angle
+    center = (w // 2, h // 2)
+    rotation_matrix = cv2.getRotationMatrix2D(center, average_angle, 1.0)
+    rotated = cv2.warpAffine(image, rotation_matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    save_path = Path(__file__).parent / "straightened" / f"{img_path.stem}.png"
+    cv2.imwrite(str(save_path), rotated)
+    cv2.imshow("Filtered Lines and Rotated Image", rotated)
+    cv2.waitKey(0)
+    return save_path
+    # if save:
+    #     # Save and display the straightened image
+    #     cv2.imwrite(str(Path(__file__).parent / "straightened" / f"{img_path.stem}.png"), rotated)
+    #     # resized = cv2.resize(rotated, (1080, 1920))
+    #     # cv2.imshow("Filtered Lines and Rotated Image", resized)
+    #     cv2.imshow("Filtered Lines and Rotated Image", rotated)
+    #     cv2.waitKey(0)
+    #     cv2.destroyAllWindows()
+    #     return Image.fromarray(rotated)
+
+    # else:
+    #     return Image.fromarray(rotated)
+
 def extract_content_from_page(page : pymupdf.Page) -> str:
     text = str(page.get_text("text", sort=True))
     text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
@@ -253,8 +306,9 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest_folder : Path, file_name : str)
     pix.pdfocr_save(doc_path, language="mkd")
     img_path = Path(__file__).parent / "initial_img_.png"
     pix.save(str(img_path))
+    rotated_img_path = straightenImage(img_path, save=True)
     debugger = VisualDebugger()
-    debugger.split_document_with_rectangular_contours(str(img_path), 40, 0)
+    debugger.split_document_with_rectangular_contours(str(rotated_img_path), 40, 0)
     return pymupdf.open(str(doc_path))
 
 def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, bool]:
@@ -379,7 +433,7 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2/DEBUG"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
     file_basename = ""
     file_name_with_extension = ""
     for x in root_folder_path_obj.iterdir():
@@ -388,7 +442,7 @@ def main():
             file_basename = x.stem
             file_name_with_extension = x.name
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = DocType.TYPE_2
+            doc_type = DocType.TYPE_3
             doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
             result = None
             if not is_regular_pdf_page(doc[0]):
