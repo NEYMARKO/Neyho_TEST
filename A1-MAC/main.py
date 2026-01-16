@@ -54,14 +54,14 @@ DOCUMENT_LAYOUT = {
         [
             {
                 'table': [
-                    (0.065, 0.25),
-                    (0.925, 0.4)
+                    (0.075, 0.185),
+                    (0.925, 0.265)
                 ]
             },
             {
                 'checkbox': [
                     (0.225, 0.175),
-                    (0.6, 0.21)
+                    (0.6, 0.225)
                 ]
             }
         ]
@@ -72,8 +72,8 @@ DOCUMENT_LAYOUT = {
         [
             {
                 'table': [
-                    (0.075, 0.185),
-                    (0.925, 0.265)
+                    (0.075, 0.195),
+                    (0.925, 0.275)
                 ]
             },
             {
@@ -199,9 +199,9 @@ class VisualDebugger:
         cv2.imwrite(img_path[:-4] + "contours.png", img)
         return
 
-
-def straightenImage(img_path : Path, save : bool=False) -> Path:
-    image = cv2.imread(str(img_path))
+def straightenImage(img_path : Path, dest_folder : Path) -> Path:
+    data = np.fromfile(img_path, dtype=np.uint8)
+    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
     
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, 50, 150, apertureSize=3)
@@ -234,23 +234,11 @@ def straightenImage(img_path : Path, save : bool=False) -> Path:
     center = (w // 2, h // 2)
     rotation_matrix = cv2.getRotationMatrix2D(center, average_angle, 1.0)
     rotated = cv2.warpAffine(image, rotation_matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-    save_path = Path(__file__).parent / "straightened" / f"{img_path.stem}.png"
+    if not dest_folder.exists() and not dest_folder.is_dir():
+        dest_folder.mkdir(parents=True, exist_ok=True)
+    save_path = dest_folder / "rotated.png"
     cv2.imwrite(str(save_path), rotated)
-    cv2.imshow("Filtered Lines and Rotated Image", rotated)
-    cv2.waitKey(0)
     return save_path
-    # if save:
-    #     # Save and display the straightened image
-    #     cv2.imwrite(str(Path(__file__).parent / "straightened" / f"{img_path.stem}.png"), rotated)
-    #     # resized = cv2.resize(rotated, (1080, 1920))
-    #     # cv2.imshow("Filtered Lines and Rotated Image", resized)
-    #     cv2.imshow("Filtered Lines and Rotated Image", rotated)
-    #     cv2.waitKey(0)
-    #     cv2.destroyAllWindows()
-    #     return Image.fromarray(rotated)
-
-    # else:
-    #     return Image.fromarray(rotated)
 
 def extract_content_from_page(page : pymupdf.Page) -> str:
     text = str(page.get_text("text", sort=True))
@@ -273,7 +261,7 @@ def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Pa
             b = obj.get(element, [])
             rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
             break
-    print(f"{rect_bounds=}")
+    # print(f"{rect_bounds=}")
     rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
     pix = orig_page.get_pixmap(clip=rect, dpi = 300)
     img_path = Path().resolve() / f"cropped_{element}.png"
@@ -302,13 +290,15 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest_folder : Path, file_name : str)
     # pix.save(str(dest))
     if not dest_folder.exists() and not dest_folder.is_dir():
         dest_folder.mkdir(parents=True, exist_ok=True)
-    doc_path = str(dest_folder / file_name)
-    pix.pdfocr_save(doc_path, language="mkd")
-    img_path = Path(__file__).parent / "initial_img_.png"
+    img_path = dest_folder / "pdf_image.png"
     pix.save(str(img_path))
-    rotated_img_path = straightenImage(img_path, save=True)
-    debugger = VisualDebugger()
-    debugger.split_document_with_rectangular_contours(str(rotated_img_path), 40, 0)
+    # rotated_img_path = straightenImage(img_path, Path(__file__).parent / "straightened")
+    # rotated_pix = fitz.Pixmap(str(rotated_img_path))
+    doc_path = str(dest_folder / file_name)
+    # rotated_pix.pdfocr_save(doc_path, language="mkd")
+    pix.pdfocr_save(doc_path, language="mkd")
+    # debugger = VisualDebugger()
+    # debugger.split_document_with_rectangular_contours(str(rotated_img_path), 40, 0)
     return pymupdf.open(str(doc_path))
 
 def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, bool]:
@@ -319,22 +309,43 @@ def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, b
     img_path = str(crop_page(page, doc_type, 'checkbox').absolute())
     cfg = config.PipelinesConfig()
     cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
-    cfg.height_range = (70, 200)     # Should be similar to width for square boxes
+    cfg.height_range = (90, 200)     # Should be similar to width for square boxes
     cfg.scaling_factors = [0.7, 0.8, 0.9, 1.0, 1.1]
     cfg.wh_ratio_range = (0.8, 1.2)  # Closer to square
-    cfg.group_size_range = (1, 5)
-    cfg.dilation_iterations = [0]      # Start with 1, try 2 if needed
+    cfg.group_size_range = (1, 1)
+    cfg.dilation_iterations = 1      # This can merge the double borders
     
     checkboxes = get_checkboxes(
         img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
     )
 
+    from boxdetect.pipelines import get_boxes
+
+    rects, grouping_rects, image, output_image = get_boxes(
+        img_path, cfg=cfg, plot=False
+    )
+
+    # import matplotlib.pyplot as plt
+
+    # plt.figure(figsize=(20,20))
+    # plt.imshow(output_image)
+    # plt.show()
+    # for checkbox in checkboxes:
+    #     print(f"Bounding rectangle: {checkbox[0]}")
+    #     print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
+    #     plt.figure(figsize=(1,1))
+    #     plt.imshow(checkbox[2])
+    #     plt.show()
+
+    # print(f"{checkboxes.size=}")
     if checkboxes.size == 0:
         print("Unable to detect checkboxes, check cfg.width and height range")
         return {}
-    
+    elif checkboxes.size / 3 == 1:
+        raise IndexError("Only 1 checkbox detected")
     #sort using x coordinate => let checboxes go from left to right
     sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
+    # print(f"{sorted_checkboxes=}")
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
@@ -380,7 +391,7 @@ def extract_all_relevant_data(doc : pymupdf.Document, doc_type : DocType, file_b
     checkbox_content = {}
     if CONFIG.get(doc_type, {}).get("has_checkbox"):
         checkbox_content = get_checkbox_content(doc[0], doc_type)
-        print(f"{checkbox_content=}")
+        # print(f"{checkbox_content=}")
     table_content = get_table_content(doc[0], doc_type, file_basename)
     print(f"{table_content=}")
     date = get_date(extract_content_from_page(doc[0]))
@@ -407,11 +418,11 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
     if customer_type_match:
         matched_string = customer_type_match.group(0).strip().lower()
-        print(f"{matched_string=}")
+        # print(f"{matched_string=}")
         is_resident = False
         possible_check_marks = [chr(0x455), chr(0x78)]
         all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
-        print(f"{all_mark_positions=}")
+        # print(f"{all_mark_positions=}")
         if all(var == -1 for var in all_mark_positions):
             raise ValueError("Unable to detect checked box")
         is_resident = any(var == 0 for var in all_mark_positions)
@@ -428,12 +439,13 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
             text_blocks += 1
         elif (b['type'] == 1):
             image_blocks += 1
-    print(f"{text_blocks=}")
-    print(f"{image_blocks=}")
+    # print(f"{text_blocks=}")
+    # print(f"{image_blocks=}")
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
     file_basename = ""
     file_name_with_extension = ""
     for x in root_folder_path_obj.iterdir():
@@ -452,7 +464,7 @@ def main():
                 result = extract_data(doc, doc_type)
             if not doc:
                 raise RuntimeError("Unable to read document!")
-            print(f"{result=}")
+            print(f"\n{result=}\n")
     return
 
 if __name__ == "__main__":
