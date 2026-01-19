@@ -8,15 +8,21 @@ class ImageType(Enum):
     PREPROCESSED = 2
     
 class TableExtractor:
-    def __init__(self, image_path : Path):
+    def __init__(self, image_path : Path, file_basename):
         self.original_image = cv2.imread(image_path)
+        height, width, channels = self.original_image.shape
+        self.original_image = self.original_image[0:int(0.5 * height), 0:width]
+        self.file_basename = file_basename
         self.root_output_folder = Path() / "outputs"
         self.preprocessed_output_folder = self.root_output_folder / "preprocessed"
 
     def extract_table_with_fixed_perspective(self, save_path : Path) -> None:
+        if not save_path.parent.exists() or not save_path.parent.is_dir():
+            save_path.parent.mkdir(parents=True, exist_ok=True)
         preprocessed_image = self.preprocess_image()
         # tableExtractor.show_image(ImageType.PREPROCESSED)
         self.find_contours(preprocessed_image)
+        cv2.imwrite(str(save_path.parent / "preprocessed.png"), preprocessed_image)
         self.filter_contours_and_leave_only_rectangles()
         self.find_largest_contour_by_area()
         # cv2.imwrite(Path() / "outputs/contours/contours.png", tableExtractor.image_with_contour_with_max_area)
@@ -26,7 +32,9 @@ class TableExtractor:
         self.apply_perspective_transform()
         self.add_10_percent_padding()
         preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
-        cv2.imwrite(str(save_path), preprocessed_image)
+        cv2.imwrite(str(save_path.parent / "correct_perspective_with_padding.png"), self.perspective_corrected_image_with_padding)
+        cv2.imwrite(str(save_path.parent / "all_contours.png"), self.original_image_with_all_contours)
+        cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
         return 
     
     def clear_table(self, save_path : Path) -> None:
@@ -40,7 +48,7 @@ class TableExtractor:
         if not input_image:
             input_image = self.original_image
         inverted_img = self.preprocess_till_invert(input_image)
-        dilated_img = cv2.dilate(inverted_img, None, iterations=5)
+        dilated_img = cv2.dilate(inverted_img, None, iterations=0)
         return dilated_img
     
     def preprocess_till_invert(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
