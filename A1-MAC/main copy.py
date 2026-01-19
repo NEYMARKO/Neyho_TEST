@@ -1,16 +1,14 @@
 import re
 import cv2
 import fitz
-import torch
 import pymupdf
 import numpy as np
+from PIL import Image
 from enum import Enum
 from pathlib import Path
 from boxdetect import config
 from itertools import product
-from PIL import Image, ImageDraw
 from boxdetect.pipelines import get_checkboxes
-from transformers import TableTransformerForObjectDetection, DetrImageProcessor
 
 regs = {'3': [
     r'бр\.\s*(\d+)',
@@ -70,20 +68,15 @@ DOCUMENT_LAYOUT = {
     },
     DocType.TYPE_3: 
     {
-        'bounds': 
+        'table': 
         [
-            {
-                'table': [
-                    (0.075, 0.195),
-                    (0.925, 0.275)
-                ]
-            },
-            {
-                'checkbox': [
-                    (0.225, 0.175),
-                    (0.6, 0.225)
-                ]
-            }
+            (0.075, 0.195),
+            (0.925, 0.275)
+        ],
+        'checkbox': 
+        [
+            (0.225, 0.175),
+            (0.6, 0.225)
         ]
     },
     DocType.TYPE_4: 
@@ -202,44 +195,44 @@ class VisualDebugger:
         return
 
 
-def detectTable(image, file_name):
-    MODEL_PATH = r"apkonsta/table-transformer-detection-ifrs"
-    failed_dir = Path(__file__).parent / "failed"
-    output_dir = Path(__file__).parent / "tables" 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+# def detectTable(image, file_name):
+#     MODEL_PATH = r"apkonsta/table-transformer-detection-ifrs"
+#     failed_dir = Path(__file__).parent / "failed"
+#     output_dir = Path(__file__).parent / "tables" 
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    processor = DetrImageProcessor.from_pretrained(MODEL_PATH)
-    model = TableTransformerForObjectDetection.from_pretrained(MODEL_PATH)
-    model.to(device)
+#     processor = DetrImageProcessor.from_pretrained(MODEL_PATH)
+#     model = TableTransformerForObjectDetection.from_pretrained(MODEL_PATH)
+#     model.to(device)
 
-    inputs = processor(images=image, return_tensors="pt").to(device)
-    with torch.no_grad():
-        outputs = model(**inputs)
+#     inputs = processor(images=image, return_tensors="pt").to(device)
+#     with torch.no_grad():
+#         outputs = model(**inputs)
 
-    target_sizes = torch.tensor([image.size[::-1]])
-    results = processor.post_process_object_detection(
-        outputs, target_sizes=target_sizes, threshold=0.7
-    )[0]
-    if len(results["boxes"]) == 0:
-        # fail_save_path = os.path.join(failed_dir, f"{base_name}_page_{page_num+1}.png")
-        # image.save(fail_save_path)
-        image.save(str(failed_dir / "failed.png"))
-        return None
+#     target_sizes = torch.tensor([image.size[::-1]])
+#     results = processor.post_process_object_detection(
+#         outputs, target_sizes=target_sizes, threshold=0.7
+#     )[0]
+#     if len(results["boxes"]) == 0:
+#         # fail_save_path = os.path.join(failed_dir, f"{base_name}_page_{page_num+1}.png")
+#         # image.save(fail_save_path)
+#         image.save(str(failed_dir / "failed.png"))
+#         return None
 
-    # If tables are found, prepare a copy of the image for drawing
-    image_with_boxes = image.copy()
-    draw = ImageDraw.Draw(image_with_boxes)
+#     # If tables are found, prepare a copy of the image for drawing
+#     image_with_boxes = image.copy()
+#     draw = ImageDraw.Draw(image_with_boxes)
 
-    for idx, box in enumerate(results["boxes"]):
-        box_coords = [int(i) for i in box.tolist()]
-        draw.rectangle(box_coords, outline="red", width=3)
-        xmin, ymin, xmax, ymax = box_coords
-        cropped_table = image.crop((xmin*0.9, ymin*0.9, xmax*1.1, ymax*1.1))
-        # save_path = os.path.join(output_dir, f"{base_name}_page_{page_num+1}_table_{idx+1}.png")
-        save_path =  output_dir / "saved image.png"
-        cropped_table.save(str(save_path))
-        print(f"SAVED IN: {str(output_dir)}")
-        return save_path
+#     for idx, box in enumerate(results["boxes"]):
+#         box_coords = [int(i) for i in box.tolist()]
+#         draw.rectangle(box_coords, outline="red", width=3)
+#         xmin, ymin, xmax, ymax = box_coords
+#         cropped_table = image.crop((xmin*0.9, ymin*0.9, xmax*1.1, ymax*1.1))
+#         # save_path = os.path.join(output_dir, f"{base_name}_page_{page_num+1}_table_{idx+1}.png")
+#         save_path =  output_dir / "saved image.png"
+#         cropped_table.save(str(save_path))
+#         print(f"SAVED IN: {str(output_dir)}")
+#         return save_path
 
 
 def straightenImage(img_path : Path, dest_folder : Path) -> Path:
@@ -290,26 +283,26 @@ def extract_content_from_page(page : pymupdf.Page) -> str:
     # print(f"{text=}")
     return text
 
-def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Path:
-    """
-    Crops page using hardcoded bound values for given element and saves result to png.
-    """
-    page_bounds = orig_page.bound()
-    width = page_bounds.width
-    height = page_bounds.height
-    rect_bounds = []
-    bounds = DOCUMENT_LAYOUT.get(doc_type, {}).get('bounds', [])
-    for obj in bounds:
-        if element in obj:
-            b = obj.get(element, [])
-            rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
-            break
-    # print(f"{rect_bounds=}")
-    rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
-    pix = orig_page.get_pixmap(clip=rect, dpi = 300)
-    img_path = Path().resolve() / f"cropped_{element}.png"
-    pix.save(img_path)
-    return img_path
+# def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Path:
+#     """
+#     Crops page using hardcoded bound values for given element and saves result to png.
+#     """
+#     page_bounds = orig_page.bound()
+#     width = page_bounds.width
+#     height = page_bounds.height
+#     rect_bounds = []
+#     bounds = DOCUMENT_LAYOUT.get(doc_type, {}).get('bounds', [])
+#     for obj in bounds:
+#         if element in obj:
+#             b = obj.get(element, [])
+#             rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
+#             break
+#     # print(f"{rect_bounds=}")
+#     rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
+#     pix = orig_page.get_pixmap(clip=rect, dpi = 300)
+#     img_path = Path().resolve() / f"cropped_{element}.png"
+#     pix.save(img_path)
+#     return img_path
 
 def raw_img_to_pdf(img_src : Path, dest_folder : Path, file_name : str) -> pymupdf.Document:
     doc = fitz.open()
@@ -336,51 +329,68 @@ def scanned_img_to_pdf(page : pymupdf.Page, dest_folder : Path, file_name : str)
     img_path = dest_folder / "pdf_image.png"
     pix.save(str(img_path))
     image = Image.open(img_path)
-    table_img_pix = fitz.Pixmap(detectTable(image, file_name))
+    # table_img_pix = fitz.Pixmap(detectTable(image, file_name))
     # rotated_img_path = straightenImage(img_path, Path(__file__).parent / "straightened")
     # rotated_pix = fitz.Pixmap(str(rotated_img_path))
     doc_path = str(dest_folder / file_name)
     # rotated_pix.pdfocr_save(doc_path, language="mkd")
-    table_img_pix.pdfocr_save(doc_path, language="mkd")
+    # table_img_pix.pdfocr_save(doc_path, language="mkd")
     # debugger = VisualDebugger()
     # debugger.split_document_with_rectangular_contours(str(rotated_img_path), 40, 0)
     return pymupdf.open(str(doc_path))
 
-def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, bool]:
+
+def shrink_checkbox_choice(sorted_checkboxes : list[any]) -> None:
+    """
+    If width and height ranges are too broad, more than just checkboxes could get detected.
+    Function is used to determine whether detected stuff (that is considered to be checkbox)
+    is on the same level (approximately same height) as it's follower in the list
+    """
+    # checkbox_bounds = DOCUMENT_LAYOUT.get(doc_type, {}).get("checkbox", [])
+    # lower_y_bound = checkbox_bounds[0][1]
+    while True:
+        #if it is more than 20 pixels of height difference, they probably aren't in the same line
+        if abs(sorted_checkboxes[0][0][1] - sorted_checkboxes[1][0][1]) > 20: \
+            # or sorted_checkboxes[0][0][1] < height * lower_y_bound: #can't really rely on bounds since image can be
+            # larger than just content of document - it can have padding (which could be large)
+            sorted_checkboxes = sorted_checkboxes[1:]
+        else:
+            break
+    return
+
+def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool]:
     """
     In case of not detecting checkboxes, check width and height range of
     checkboxes in image -> can use any image viewer => good one: https://pixspy.com/ 
     """
-    img_path = str(crop_page(page, doc_type, 'checkbox').absolute())
+    # img_path = str(crop_page(page, doc_type, 'checkbox').absolute())
     cfg = config.PipelinesConfig()
-    cfg.width_range = (90, 200)      # Adjust based on actual checkbox size
-    cfg.height_range = (90, 200)     # Should be similar to width for square boxes
+    cfg.width_range = (30, 90)      # Adjust based on actual checkbox size
+    cfg.height_range = (30, 90)     # Should be similar to width for square boxes
     cfg.scaling_factors = [0.7, 0.8, 0.9, 1.0, 1.1]
     cfg.wh_ratio_range = (0.8, 1.2)  # Closer to square
     cfg.group_size_range = (1, 1)
     cfg.dilation_iterations = 1      # This can merge the double borders
     
     checkboxes = get_checkboxes(
-        img_path, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
+        str(img_path), cfg=cfg, px_threshold=0.1, plot=False, verbose=False
     )
 
-    from boxdetect.pipelines import get_boxes
-
-    rects, grouping_rects, image, output_image = get_boxes(
-        img_path, cfg=cfg, plot=False
-    )
-
-    # import matplotlib.pyplot as plt
-
-    # plt.figure(figsize=(20,20))
-    # plt.imshow(output_image)
-    # plt.show()
-    # for checkbox in checkboxes:
-    #     print(f"Bounding rectangle: {checkbox[0]}")
-    #     print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
-    #     plt.figure(figsize=(1,1))
-    #     plt.imshow(checkbox[2])
-    #     plt.show()
+    if plot:
+        import matplotlib.pyplot as plt
+        from boxdetect.pipelines import get_boxes
+        rects, grouping_rects, image, output_image = get_boxes(
+            str(img_path), cfg=cfg, plot=False
+        )
+        plt.figure(figsize=(20,20))
+        plt.imshow(output_image)
+        plt.show()
+        for checkbox in checkboxes:
+            print(f"Bounding rectangle: {checkbox[0]}")
+            print(f"Result of 'constains_pixels' for the checkbox: {checkbox[1]}")
+            plt.figure(figsize=(1,1))
+            plt.imshow(checkbox[2])
+            plt.show()
 
     # print(f"{checkboxes.size=}")
     if checkboxes.size == 0:
@@ -388,9 +398,12 @@ def get_checkbox_content(page : pymupdf.Page, doc_type : DocType) -> dict[str, b
         return {}
     elif checkboxes.size / 3 == 1:
         raise IndexError("Only 1 checkbox detected")
-    #sort using x coordinate => let checboxes go from left to right
-    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: inner_l[0][0], reverse=False)
-    # print(f"{sorted_checkboxes=}")
+    
+    #Sort first by y coordinate - those higher in document come first,
+    #then sort by x coordinate - those that are more left come first
+    sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: (inner_l[0][1], inner_l[0][0]), reverse=False)
+    print(f"{sorted_checkboxes=}")
+    shrink_checkbox_choice(sorted_checkboxes)
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
@@ -433,19 +446,20 @@ def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
     return ""
 
 #USED FOR OCR (FOR NOW)
-def extract_all_relevant_data(doc : pymupdf.Document, doc_type : DocType, file_basename : str) -> dict:
+def extract_scanned_pdf_data(img_path : Path, doc_type : DocType, file_basename : str) -> dict:
     checkbox_content = {}
     if CONFIG.get(doc_type, {}).get("has_checkbox"):
-        checkbox_content = get_checkbox_content(doc[0], doc_type)
-        # print(f"{checkbox_content=}")
-    table_content = get_table_content(doc[0], doc_type, file_basename)
-    print(f"{table_content=}")
-    date = get_date(extract_content_from_page(doc[0]))
-    ban = get_number(9, 10, extract_content_from_page(doc[0]))
-    embg_edb = get_number(8, 14, table_content)
-    result = {"BAN": ban, "contract_date": date, "EMBG_EDB": embg_edb}
-    result.update(checkbox_content)
-    return result
+        checkbox_content = get_checkbox_content(img_path, plot=False)
+        print(f"{checkbox_content=}")
+    # table_content = get_table_content(doc[0], doc_type, file_basename)
+    # print(f"{table_content=}")
+    # date = get_date(extract_content_from_page(doc[0]))
+    # ban = get_number(9, 10, extract_content_from_page(doc[0]))
+    # embg_edb = get_number(8, 14, table_content)
+    # result = {"BAN": ban, "contract_date": date, "EMBG_EDB": embg_edb}
+    # result.update(checkbox_content)
+    return {}
+    # return result
 
 #USED FOR REGULAR PDF (FOR NOW)
 def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
@@ -476,7 +490,45 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
         result["customer_type_businness"] = not is_resident
     return result
 
+
+def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str) -> Path:
+    """
+    Extracts and saves image contained in pdf page and saves them in <root>/extracted_imgs folder
+    
+    :param page: Description
+    :type page: pymupdf.Page
+    :param file_name: Description
+    :type file_name: str
+    :return: Description
+    :rtype: Path
+    """
+    dest_folder = Path(__file__).parent / "extracted_imgs"
+    image_list = page.get_images()
+    if not image_list:
+        raise RuntimeError("Unable to locate images on a page")
+    matrix = pymupdf.Matrix(4, 4)
+    pix = page.get_pixmap(matrix=matrix, alpha=False)
+    if pix.alpha:
+        pix.set_alpha(None)
+    # pix.save(str(dest))
+    if not dest_folder.exists() and not dest_folder.is_dir():
+        dest_folder.mkdir(parents=True, exist_ok=True)
+    if file_name.endswith(".pdf"):
+        file_name = file_name[:-4]
+    img_path = dest_folder / f"{file_name}.png"
+    print(f"{img_path=}")
+    pix.save(str(img_path))
+    return img_path
+
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
+    """
+    Checks whether page is computer generated pdf or scanned document
+    
+    :param page: Description
+    :type page: pymupdf.Page
+    :return: Description
+    :rtype: bool
+    """
     text_blocks = 0
     image_blocks = 0
     content = page.get_text("dict")
@@ -490,22 +542,19 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
-    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
-    file_basename = ""
-    file_name_with_extension = ""
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
-            file_basename = x.stem
-            file_name_with_extension = x.name
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
             doc_type = DocType.TYPE_3
-            doc = pymupdf.open(Path(root_folder_path_obj / file_name_with_extension))
+            doc = pymupdf.open(Path(root_folder_path_obj / x.name))
             result = None
             if not is_regular_pdf_page(doc[0]):
-                doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / file_basename, "scanned_img.pdf")
-                result = extract_all_relevant_data(doc, doc_type, file_basename) 
+                img_path = extract_img_from_pdf_page(doc[0], x.stem)
+                # doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / file_basename, "scanned_img.pdf")
+                result = extract_scanned_pdf_data(img_path, doc_type, x.stem) 
             else:
                 result = extract_data(doc, doc_type)
             if not doc:
