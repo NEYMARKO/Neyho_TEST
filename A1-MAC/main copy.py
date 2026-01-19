@@ -9,6 +9,7 @@ from pathlib import Path
 from boxdetect import config
 from itertools import product
 from boxdetect.pipelines import get_checkboxes
+from table_content_extractor import TableExtractor
 
 regs = {'3': [
     r'бр\.\s*(\d+)',
@@ -283,27 +284,6 @@ def extract_content_from_page(page : pymupdf.Page) -> str:
     # print(f"{text=}")
     return text
 
-# def crop_page(orig_page : pymupdf.Page, doc_type : DocType, element : str) -> Path:
-#     """
-#     Crops page using hardcoded bound values for given element and saves result to png.
-#     """
-#     page_bounds = orig_page.bound()
-#     width = page_bounds.width
-#     height = page_bounds.height
-#     rect_bounds = []
-#     bounds = DOCUMENT_LAYOUT.get(doc_type, {}).get('bounds', [])
-#     for obj in bounds:
-#         if element in obj:
-#             b = obj.get(element, [])
-#             rect_bounds = [b[0][0] * width, b[0][1] * height, b[1][0] * width, b[1][1] * height]
-#             break
-#     # print(f"{rect_bounds=}")
-#     rect = fitz.Rect(rect_bounds[0], rect_bounds[1], rect_bounds[2], rect_bounds[3])
-#     pix = orig_page.get_pixmap(clip=rect, dpi = 300)
-#     img_path = Path().resolve() / f"cropped_{element}.png"
-#     pix.save(img_path)
-#     return img_path
-
 def raw_img_to_pdf(img_src : Path, dest_folder : Path, file_name : str) -> pymupdf.Document:
     doc = fitz.open()
     imgdoc = fitz.open(str(img_src))
@@ -402,19 +382,25 @@ def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool
     #Sort first by y coordinate - those higher in document come first,
     #then sort by x coordinate - those that are more left come first
     sorted_checkboxes = sorted(checkboxes.tolist(), key=lambda inner_l: (inner_l[0][1], inner_l[0][0]), reverse=False)
-    print(f"{sorted_checkboxes=}")
+    # print(f"{sorted_checkboxes=}")
     shrink_checkbox_choice(sorted_checkboxes)
     is_resident = sorted_checkboxes[0][1]
     return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
 
-def get_table_content(page : pymupdf.Page, doc_type : DocType, file_basename : str) -> str:
+def get_table_content(img_path : Path, file_basename : str) -> str:
     # img_path = crop_page(page, doc_type, 'table')
-    # tableExtractor = TableExtractor(img_path)
-    # tableExtractor.clear_table()
+    print(f"{str(img_path)=}")
+    tableExtractor = TableExtractor(img_path)
+    img_save_path = Path(__file__).parent / "fixed_perspective_table.png"
+    tableExtractor.clear_table(img_save_path)
     # result_img_path = tableExtractor.result_path if CONFIG.get(doc_type, {}).get("clear_table") else img_path 
     # doc = raw_img_to_pdf(result_img_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
-    doc = raw_img_to_pdf(Path(__file__).parent / "tables/saved image.png", Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
-    return extract_content_from_page(doc[0])
+    doc = raw_img_to_pdf(img_save_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
+    tp = doc[0].get_textpage_ocr(language="mkd", dpi=300)
+    text = tp.extractText(sort=True)
+    text = re.sub('\n', '  ', text) #It is necessary to map it to more than just 1 space (2 or higher)
+    text = re.sub(r' {2,}', ' ', text)
+    return text
 
 def get_date(file_content : str) -> str:
     date_string = ""
@@ -451,8 +437,8 @@ def extract_scanned_pdf_data(img_path : Path, doc_type : DocType, file_basename 
     if CONFIG.get(doc_type, {}).get("has_checkbox"):
         checkbox_content = get_checkbox_content(img_path, plot=False)
         print(f"{checkbox_content=}")
-    # table_content = get_table_content(doc[0], doc_type, file_basename)
-    # print(f"{table_content=}")
+    table_content = get_table_content(img_path, file_basename)
+    print(f"{table_content=}")
     # date = get_date(extract_content_from_page(doc[0]))
     # ban = get_number(9, 10, extract_content_from_page(doc[0]))
     # embg_edb = get_number(8, 14, table_content)

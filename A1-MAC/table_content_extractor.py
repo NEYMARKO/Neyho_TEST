@@ -9,11 +9,11 @@ class ImageType(Enum):
     
 class TableExtractor:
     def __init__(self, image_path : Path):
-        self.original_image = cv2.imread(image_path.name)
+        self.original_image = cv2.imread(image_path)
         self.root_output_folder = Path() / "outputs"
         self.preprocessed_output_folder = self.root_output_folder / "preprocessed"
 
-    def clear_table(self) -> None:
+    def extract_table_with_fixed_perspective(self, save_path : Path) -> None:
         preprocessed_image = self.preprocess_image()
         # tableExtractor.show_image(ImageType.PREPROCESSED)
         self.find_contours(preprocessed_image)
@@ -25,14 +25,20 @@ class TableExtractor:
         self.calculate_new_width_and_height_of_image()
         self.apply_perspective_transform()
         self.add_10_percent_padding()
-        cv2.imwrite(str(Path() / "outputs/contours/perspective.png"), self.perspective_corrected_image_with_padding)
+        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
+        cv2.imwrite(str(save_path), preprocessed_image)
+        return 
+    
+    def clear_table(self, save_path : Path) -> None:
+        self.extract_table_with_fixed_perspective(save_path)
         preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
         self.remove_table_lines(preprocessed_image)
-        self.result_path = Path() / "outputs/result/result.png"
-        cv2.imwrite(str(self.result_path), self.image_without_lines_noise_removed)
+        cv2.imwrite(str(save_path), self.image_without_lines_noise_removed)
         return
 
     def preprocess_image(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
+        if not input_image:
+            input_image = self.original_image
         inverted_img = self.preprocess_till_invert(input_image)
         dilated_img = cv2.dilate(inverted_img, None, iterations=5)
         return dilated_img
@@ -136,7 +142,7 @@ class TableExtractor:
 
     def erode_vertical_lines(self, inverted_image : cv2.typing.MatLike) -> None:
         hor = np.array([[1,1,1,1,1,1]])
-        self.vertical_lines_eroded_image = cv2.erode(inverted_image, hor, iterations=15)
+        self.vertical_lines_eroded_image = cv2.erode(inverted_image, hor, iterations=5)
         self.vertical_lines_eroded_image = cv2.dilate(self.vertical_lines_eroded_image, hor, iterations=10)
         return
     def erode_horizontal_lines(self, inverted_image : cv2.typing.MatLike) -> None:
@@ -147,7 +153,7 @@ class TableExtractor:
             [1],
             [1],
             [1]])
-        self.horizontal_lines_eroded_image = cv2.erode(inverted_image, ver, iterations=12)
+        self.horizontal_lines_eroded_image = cv2.erode(inverted_image, ver, iterations=5)
         self.horizontal_lines_eroded_image = cv2.dilate(self.horizontal_lines_eroded_image, ver, iterations=10)
         return
     def combine_erroded_images(self) -> None:
@@ -157,7 +163,7 @@ class TableExtractor:
 
     def dilate_combined_image_to_make_lines_thicker(self) -> None:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        self.combined_image_dilated = cv2.dilate(self.combined_image, kernel, iterations=7)
+        self.combined_image_dilated = cv2.dilate(self.combined_image, kernel, iterations=3)
         return
 
     def subtract_combined_and_dilated_image_from_original_image(self, inverted_image : cv2.typing.MatLike) -> None:
@@ -166,8 +172,8 @@ class TableExtractor:
     
     def remove_noise_with_erode_and_dilate(self) -> None:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=3)
-        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=4)
+        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=1)
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=2)
         return
     
     def remove_table_lines(self, inverted_image : cv2.typing.MatLike) -> None:
