@@ -134,7 +134,7 @@ DOCUMENT_REGEXES = {
         "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
         "contract_date": DATE_REGEXES,
         "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)" ,
-        "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13})"
+        "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13,14})"
     }
 }
 
@@ -289,7 +289,7 @@ def get_relevant_pair(sorted_checkboxes : list[any]) -> list:
         else:
             pair = [sorted_checkboxes[0], sorted_checkboxes[1]]
             break
-    pair = sorted(pair, key=lambda el : el[0], reverse=False)
+    pair = sorted(pair, key=lambda el : el[0][0], reverse=False)
     return pair
 
 def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool]:
@@ -401,7 +401,8 @@ def extract_scanned_pdf_data(img_path : Path, doc : pymupdf.Document, doc_type :
 #USED FOR REGULAR PDF (FOR NOW)
 def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     content = extract_content_from_page(doc[0])
-    result = {}
+    # print(f"{content=}")
+    result = {"contract_date": "", "BAN": "", "EMBG_EDB": "", "customer_type_resident": False, "customer_type_businness": False}
     for expression in DOCUMENT_REGEXES.get(doc_type, {}).get("contract_date", []):
         match = re.search(expression, content, re.DOTALL)
         if match:
@@ -431,7 +432,7 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
 def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str) -> Path:
     """
     Extracts and saves image contained in pdf page and saves them in <root>/extracted_imgs folder
-    
+    DPI needs to 300 (ocr engines assume 300 dpi)
     :param page: Description
     :type page: pymupdf.Page
     :param file_name: Description
