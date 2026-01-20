@@ -32,7 +32,7 @@ class TableExtractor:
     def clear_table(self, save_path : Path) -> None:
         self.extract_table_with_fixed_perspective(save_path)
         # preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
-        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image, use_gauss=True)
+        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image, use_gauss=False)
         self.remove_table_lines(preprocessed_image)
         cv2.imwrite(str(save_path.parent / "combined_lines.png"), self.combined_lines)
         cv2.imwrite(str(save_path), self.image_without_lines_noise_removed)
@@ -222,16 +222,16 @@ class TableExtractor:
         
         # Use longer kernels to detect only long lines (not text strokes)
         # Horizontal lines (at least 40-50 pixels long)
-        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 1))
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 1))
         horizontal_lines = cv2.erode(inverted_image, horizontal_kernel, iterations=5)
         horizontal_lines = cv2.dilate(horizontal_lines, horizontal_kernel, iterations=10)
-        # horizontal_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, horizontal_kernel, iterations=10)
+        # horizontal_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
         
         # Vertical lines (at least 40-50 pixels long)
-        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 10))
+        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 20))
         vertical_lines = cv2.erode(inverted_image, vertical_kernel, iterations=5)
         vertical_lines = cv2.dilate(vertical_lines, vertical_kernel, iterations=10)
-        # vertical_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, vertical_kernel, iterations=10)
+        # vertical_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
         
         # Combine
         all_lines = cv2.add(horizontal_lines, vertical_lines)
