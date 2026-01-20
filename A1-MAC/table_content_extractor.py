@@ -16,21 +16,14 @@ class TableExtractor:
         if not save_path.parent.exists() or not save_path.parent.is_dir():
             save_path.parent.mkdir(parents=True, exist_ok=True)
         preprocessed_image = self.preprocess_image()
-        # tableExtractor.show_image(ImageType.PREPROCESSED)
         self.find_contours(preprocessed_image)
         cv2.imwrite(str(save_path.parent / "preprocessed.png"), preprocessed_image)
         self.filter_contours_and_leave_only_rectangles()
         self.find_largest_contour_by_area()
-        # cv2.imwrite(Path() / "outputs/contours/contours.png", tableExtractor.image_with_contour_with_max_area)
-        # cv2.waitKey(0)
         self.order_points_in_the_contour_with_max_area()
         self.calculate_new_width_and_height_of_image()
         self.apply_perspective_transform()
-        # self.add_10_percent_padding()
-        # preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
         preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image)
-        # cv2.imwrite(str(save_path.parent / "correct_perspective_with_padding.png"), self.perspective_corrected_image_with_padding)
-        # cv2.imwrite(str(save_path.parent / "all_contours.png"), self.original_image_with_all_contours)
         cv2.imwrite(str(save_path.parent / "perspective.png"), self.perspective_corrected_image)
         cv2.imwrite(str(save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
         cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
@@ -39,7 +32,7 @@ class TableExtractor:
     def clear_table(self, save_path : Path) -> None:
         self.extract_table_with_fixed_perspective(save_path)
         # preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
-        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image)
+        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image, use_gauss=True)
         self.remove_table_lines(preprocessed_image)
         cv2.imwrite(str(save_path.parent / "combined_lines.png"), self.combined_lines)
         cv2.imwrite(str(save_path), self.image_without_lines_noise_removed)
@@ -52,8 +45,11 @@ class TableExtractor:
         dilated_img = cv2.dilate(inverted_img, None, iterations=5)
         return dilated_img
     
-    def preprocess_till_invert(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
+    def preprocess_till_invert(self, input_image : cv2.typing.MatLike | None = None, use_gauss : bool = False) -> cv2.typing.MatLike:
         gray_img = cv2.cvtColor(self.original_image if input_image is None else input_image, cv2.COLOR_BGR2GRAY)
+        if use_gauss:
+            gray_img = cv2.GaussianBlur(gray_img, (3,3), 0)
+
         threshold_img = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         inverted_img = cv2.bitwise_not(threshold_img)
         return inverted_img
@@ -252,11 +248,15 @@ class TableExtractor:
         # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
         # self.image_without_lines_noise_removed = cv2.morphologyEx(self.image_without_lines, cv2.MORPH_OPEN, kernel, iterations=1)
         # self.image_without_lines_noise_removed = self.image_without_lines
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines, kernel, iterations=3)
-        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=1)
+        self.image_without_lines = cv2.GaussianBlur(self.image_without_lines, (5,5), 0)
+        # self.image_without_lines = cv2.GaussianBlur(self.image_without_lines, (3,3), 0)
+        
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines, kernel, iterations=1)
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines, kernel, iterations=0)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines_noise_removed, kernel, iterations=0)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=0)
     # def remove_table_lines(self, inverted_image : cv2.typing.MatLike) -> None:
     #     self.erode_horizontal_lines(inverted_image)
     #     self.erode_vertical_lines(inverted_image)
