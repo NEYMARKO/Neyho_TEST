@@ -6,8 +6,8 @@ from pathlib import Path
 class TableExtractor:
     def __init__(self, image_path : Path, file_basename):
         self.original_image = cv2.imread(str(image_path))
-        # height, width, channels = self.original_image.shape
-        # self.original_image = self.original_image[0:int(0.5 * height), 0:width]
+        height, width, channels = self.original_image.shape
+        self.original_image = self.original_image[0:int(0.5 * height), 0:width]
         self.file_basename = file_basename
         self.root_output_folder = Path() / "outputs"
         self.preprocessed_output_folder = self.root_output_folder / "preprocessed"
