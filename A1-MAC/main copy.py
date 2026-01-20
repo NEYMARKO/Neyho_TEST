@@ -445,7 +445,13 @@ def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str) -> Path:
     image_list = page.get_images()
     if not image_list:
         raise RuntimeError("Unable to locate images on a page")
-    matrix = pymupdf.Matrix(4, 4)
+    #PDF uses points, not pixels => 1 point = 1/72 inch => 1 Inch = 72 PDF points
+    #DPI - 'Dots Per Inch' - measures density of dots (or pixels) in image or an display
+    # => dpi = pixels per inch, 1 inch has 72 points => dpi = pixels per 72 points => pixels = dpi / 72points
+    #PDF page width in points * scale = pixel width
+    dpi = 300
+    scale = dpi / 72 #because PDF uses 72 points per inch
+    matrix = pymupdf.Matrix(scale, scale)
     pix = page.get_pixmap(matrix=matrix, alpha=False)
     if pix.alpha:
         pix.set_alpha(None)

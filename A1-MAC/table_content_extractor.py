@@ -9,7 +9,7 @@ class ImageType(Enum):
     
 class TableExtractor:
     def __init__(self, image_path : Path, file_basename):
-        self.original_image = cv2.imread(image_path)
+        self.original_image = cv2.imread(str(image_path))
         height, width, channels = self.original_image.shape
         self.original_image = self.original_image[0:int(0.5 * height), 0:width]
         self.file_basename = file_basename
@@ -48,7 +48,7 @@ class TableExtractor:
         if not input_image:
             input_image = self.original_image
         inverted_img = self.preprocess_till_invert(input_image)
-        dilated_img = cv2.dilate(inverted_img, None, iterations=0)
+        dilated_img = cv2.dilate(inverted_img, None, iterations=5)
         return dilated_img
     
     def preprocess_till_invert(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
@@ -57,7 +57,7 @@ class TableExtractor:
         inverted_img = cv2.bitwise_not(threshold_img)
         return inverted_img
     def find_contours(self, image : cv2.typing.MatLike) -> None:
-        self.contours, self.hierarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        self.contours, self.hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         self.original_image_with_all_contours = self.original_image.copy()
         cv2.drawContours(self.original_image_with_all_contours, self.contours, -1, (0, 255, 0), 3)
     
