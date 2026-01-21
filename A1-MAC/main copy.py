@@ -25,6 +25,9 @@ class DocType(Enum):
     TYPE_5 = 5
     UNDEFINED = -1
 
+RESIDENT_CUSTOMER_STRING = "customer_type_resident"
+BUSINESS_CUSTOMER_STRING = "customer_type_business"
+
 DOC_NAME_TO_TYPE_MAP = {
     "Договор за засновање претплатнички однос за користење": DocType.TYPE_1,
     "Договор за купопродажба на уреди со одложено плаќање на рати": DocType.TYPE_2,
@@ -331,7 +334,8 @@ def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool
         print("Unable to detect checkboxes, check cfg.width and height range")
         return {}
     elif checkboxes.size / 3 == 1:
-        raise IndexError("Only 1 checkbox detected")
+        print("Only 1 checkbox detected")
+        return {}
     
     #Sort first by y coordinate - those higher in document come first,
     #then sort by x coordinate - those that are more left come first
@@ -340,7 +344,7 @@ def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool
     pair = get_relevant_pair(sorted_checkboxes)
     # print(f"{pair=}")
     is_resident = pair[0][1]
-    return {"customer_type_resident" : is_resident, "customer_type_bussiness" : not is_resident}
+    return {RESIDENT_CUSTOMER_STRING : is_resident, BUSINESS_CUSTOMER_STRING : not is_resident}
 
 def get_table_content(img_path : Path, file_basename : str) -> str:
     # img_path = crop_page(page, doc_type, 'table')
@@ -398,11 +402,15 @@ def extract_scanned_pdf_data(img_path : Path, doc : pymupdf.Document, doc_type :
     result.update(checkbox_content)
     return result
 
+def checkbox_fallback(page : pymupdf.Page, doc_type : DocType) -> dict:
+    img_path = extract_img_from_pdf_page(page, f"doc_type_{doc_type}_temp_checkbox.png")
+    return get_checkbox_content(img_path, plot=False)
+
 #USED FOR REGULAR PDF (FOR NOW)
 def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     content = extract_content_from_page(doc[0])
     # print(f"{content=}")
-    result = {"contract_date": "", "BAN": "", "EMBG_EDB": "", "customer_type_resident": False, "customer_type_businness": False}
+    result = {"contract_date": "", "BAN": "", "EMBG_EDB": "", RESIDENT_CUSTOMER_STRING: False, BUSINESS_CUSTOMER_STRING: False}
     for expression in DOCUMENT_REGEXES.get(doc_type, {}).get("contract_date", []):
         match = re.search(expression, content, re.DOTALL)
         if match:
@@ -416,16 +424,24 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
     if customer_type_match:
         matched_string = customer_type_match.group(0).strip().lower()
-        # print(f"{matched_string=}")
+        print(f"{matched_string=}")
         is_resident = False
         possible_check_marks = [chr(0x455), chr(0x78)]
         all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
         # print(f"{all_mark_positions=}")
         if all(var == -1 for var in all_mark_positions):
-            raise ValueError("Unable to detect checked box")
-        is_resident = any(var == 0 for var in all_mark_positions)
-        result["customer_type_resident"] = is_resident
-        result["customer_type_businness"] = not is_resident
+            # print("GOING FOR FALLBACK")
+            checkbox_result = checkbox_fallback(doc[0], doc_type)
+            # print(f"{checkbox_result=}")
+            if not checkbox_result:
+                raise ValueError("Unable to detect checked box")            
+            else:
+                result[RESIDENT_CUSTOMER_STRING] = checkbox_result.get(RESIDENT_CUSTOMER_STRING)
+                result[BUSINESS_CUSTOMER_STRING] = checkbox_result.get(BUSINESS_CUSTOMER_STRING)
+        else:
+            is_resident = any(var == 0 for var in all_mark_positions)
+            result[RESIDENT_CUSTOMER_STRING] = is_resident
+            result[BUSINESS_CUSTOMER_STRING] = not is_resident
     return result
 
 
@@ -486,8 +502,8 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
-    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1"
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1/DEBUG"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
