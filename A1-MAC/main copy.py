@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from boxdetect import config
 from itertools import product
+from rapidfuzz import fuzz, process
 from boxdetect.pipelines import get_checkboxes
 from table_content_extractor import TableExtractor
 
@@ -25,6 +26,7 @@ class DocType(Enum):
     TYPE_5 = 5
     UNDEFINED = -1
 
+RESIDENT_KEYWORD = "физичко лице"
 RESIDENT_CUSTOMER_STRING = "customer_type_resident"
 BUSINESS_CUSTOMER_STRING = "customer_type_business"
 
@@ -132,11 +134,18 @@ def generate_all_date_regex_combinations() -> list[tuple[str]]:
 DATE_REGEXES = generate_all_date_regex_combinations()
 
 DOCUMENT_REGEXES = {
+    DocType.TYPE_2: 
+    {
+        "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
+        "contract_date": DATE_REGEXES,
+        "customer_type": "КОРИСНИК [^\\s]+\\s([^\\s]+\\s[^\\s]+)" ,
+        "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13,14})"
+    },
     DocType.TYPE_3: 
     {
         "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
         "contract_date": DATE_REGEXES,
-        "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)" ,
+        "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
         "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13,14})"
     }
 }
@@ -144,12 +153,12 @@ DOCUMENT_REGEXES = {
 CONFIG = {
     DocType.TYPE_2: 
     {
-        "clear_table": False,
+        "has_table_bounds": False,
         "has_checkbox": False
     },
     DocType.TYPE_3: 
     {
-        "clear_table": True,
+        "has_table_bounds": True,
         "has_checkbox": True
     }
 }
@@ -392,8 +401,22 @@ def extract_scanned_pdf_data(img_path : Path, doc : pymupdf.Document, doc_type :
     if CONFIG.get(doc_type, {}).get("has_checkbox"):
         checkbox_content = get_checkbox_content(img_path, plot=False)
         # print(f"{checkbox_content=}")
-    table_content = get_table_content(img_path, file_basename)
-    print(f"{table_content=}")
+    else:
+        content = extract_content_from_page(doc[0])
+        matched_keyword, score, idx = process.extractOne("КОРИСНИК", content.split())
+        print(f"{matched_keyword=}, {score=}, {idx=}")
+        customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), extract_content_from_page(doc[0]), re.DOTALL)
+        if customer_type_match:
+            matched_string = customer_type_match.group(1)
+            if fuzz.ratio(matched_string, RESIDENT_KEYWORD) > 0.65:
+                checkbox_content[RESIDENT_CUSTOMER_STRING] = True
+                checkbox_content[BUSINESS_CUSTOMER_STRING] = False
+    table_content = ""
+    if CONFIG.get(doc_type, {}).get("has_table_bounds"):
+        table_content = get_table_content(img_path, file_basename)
+    else:
+        table_content = extract_content_from_page(doc[0])
+    # print(f"{table_content=}")
     document_content = extract_content_from_page(doc[0])
     date = get_date(document_content)
     ban = get_number(9, 10, document_content)
@@ -434,7 +457,8 @@ def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
             checkbox_result = checkbox_fallback(doc[0], doc_type)
             # print(f"{checkbox_result=}")
             if not checkbox_result:
-                raise ValueError("Unable to detect checked box")            
+                # raise ValueError("Unable to detect checked box")
+                print("UNABLE TO DETECT CHECKBOXES")            
             else:
                 result[RESIDENT_CUSTOMER_STRING] = checkbox_result.get(RESIDENT_CUSTOMER_STRING)
                 result[BUSINESS_CUSTOMER_STRING] = checkbox_result.get(BUSINESS_CUSTOMER_STRING)
@@ -502,21 +526,31 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1"
-    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1/DEBUG"
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = DocType.TYPE_3
+            doc_type = DocType.TYPE_2
             doc = pymupdf.open(Path(root_folder_path_obj / x.name))
             result = None
             name = f"document_{i}"
             if not is_regular_pdf_page(doc[0]):
                 img_path = extract_img_from_pdf_page(doc[0], name)
                 doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
-                result = extract_scanned_pdf_data(img_path, doc, doc_type, name) 
+                content = extract_content_from_page(doc[0])
+                keyword = "физичко лице"
+                words = content.split()
+                kw_len = len(keyword.split())
+
+                ngrams = [" ".join(words[i:i+kw_len]) for i in range(len(words) - kw_len + 1)]
+
+                print(f"{ngrams=}")
+                match, score, idx = process.extractOne(keyword, ngrams)
+
+                print(match, score)
             else:
                 result = extract_data(doc, doc_type)
             if not doc:
