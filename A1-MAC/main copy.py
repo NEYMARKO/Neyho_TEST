@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from boxdetect import config
 from itertools import product
-from rapidfuzz import fuzz, process
+from rapidfuzz import process
 from boxdetect.pipelines import get_checkboxes
 from table_content_extractor import TableExtractor
 
@@ -138,7 +138,11 @@ DOCUMENT_REGEXES = {
     {
         "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
         "contract_date": DATE_REGEXES,
-        "customer_type": "КОРИСНИК [^\\s]+\\s([^\\s]+\\s[^\\s]+)" ,
+        "customer_type": {
+            "preceding": "КОРИСНИК",
+            "delimiter": " ",
+            "unchanged": "[^\\s]+\\s([^\\s]+\\s[^\\s]+)"
+        },
         "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13,14})"
     },
     DocType.TYPE_3: 
@@ -395,6 +399,23 @@ def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
             return match.group(0).strip().replace('.', '').replace(',', '')
     return ""
 
+def get_ocr_version_of_key_phrase(phrase : str, content : str) -> str:
+    words = content.split()
+    kw_len = len(phrase.split())
+
+    ngrams = [" ".join(words[i:i+kw_len]) for i in range(len(words) - kw_len + 1)]
+
+    print(f"{ngrams=}")
+    match, score, idx = process.extractOne(phrase, ngrams)
+    print(f"Matched {phrase} with {match} => score: {score}")
+
+    return match
+
+def customize_regex(content : str, doc_type : DocType) -> str:
+    doc_regex_obj =  DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", {})
+    ocr_phrase_version = get_ocr_version_of_key_phrase(doc_regex_obj.get("preceding", ""), content)
+    return ocr_phrase_version + doc_regex_obj.get("delimiter", "") + doc_regex_obj.get("unchanged", "")
+
 #USED FOR OCR (FOR NOW)
 def extract_scanned_pdf_data(img_path : Path, doc : pymupdf.Document, doc_type : DocType, file_basename : str) -> dict:
     checkbox_content = {}
@@ -403,14 +424,14 @@ def extract_scanned_pdf_data(img_path : Path, doc : pymupdf.Document, doc_type :
         # print(f"{checkbox_content=}")
     else:
         content = extract_content_from_page(doc[0])
-        matched_keyword, score, idx = process.extractOne("КОРИСНИК", content.split())
-        print(f"{matched_keyword=}, {score=}, {idx=}")
-        customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), extract_content_from_page(doc[0]), re.DOTALL)
+        regex_expression = customize_regex(content, doc_type)
+        print(f"REGEX EXPRESSION: {regex_expression}")
+        customer_type_match = re.search(regex_expression, extract_content_from_page(doc[0]), re.DOTALL)
         if customer_type_match:
             matched_string = customer_type_match.group(1)
-            if fuzz.ratio(matched_string, RESIDENT_KEYWORD) > 0.65:
-                checkbox_content[RESIDENT_CUSTOMER_STRING] = True
-                checkbox_content[BUSINESS_CUSTOMER_STRING] = False
+            print(f"{matched_string=}")
+            checkbox_content[RESIDENT_CUSTOMER_STRING] = True
+            checkbox_content[BUSINESS_CUSTOMER_STRING] = False
     table_content = ""
     if CONFIG.get(doc_type, {}).get("has_table_bounds"):
         table_content = get_table_content(img_path, file_basename)
@@ -526,8 +547,8 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3/DEBUG"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2"
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2/DEBUG"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
@@ -540,17 +561,7 @@ def main():
             if not is_regular_pdf_page(doc[0]):
                 img_path = extract_img_from_pdf_page(doc[0], name)
                 doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
-                content = extract_content_from_page(doc[0])
-                keyword = "физичко лице"
-                words = content.split()
-                kw_len = len(keyword.split())
-
-                ngrams = [" ".join(words[i:i+kw_len]) for i in range(len(words) - kw_len + 1)]
-
-                print(f"{ngrams=}")
-                match, score, idx = process.extractOne(keyword, ngrams)
-
-                print(match, score)
+                result = extract_scanned_pdf_data(img_path, doc, doc_type, name) 
             else:
                 result = extract_data(doc, doc_type)
             if not doc:
