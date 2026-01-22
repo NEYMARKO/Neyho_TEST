@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from boxdetect import config
 from itertools import product
-from rapidfuzz import process
+from rapidfuzz import process, fuzz
 from boxdetect.pipelines import get_checkboxes
 from table_content_extractor import TableExtractor
 
@@ -27,6 +27,9 @@ class DocType(Enum):
     UNDEFINED = -1
 
 RESIDENT_KEYWORD = "физичко лице"
+BAN_STRING = "BAN"
+EMBG_EDB_STRING = "EMBG_EDB"
+CONTRACT_DATE_STRING = "contract_date"
 RESIDENT_CUSTOMER_STRING = "customer_type_resident"
 BUSINESS_CUSTOMER_STRING = "customer_type_business"
 
@@ -134,36 +137,55 @@ def generate_all_date_regex_combinations() -> list[tuple[str]]:
 DATE_REGEXES = generate_all_date_regex_combinations()
 
 DOCUMENT_REGEXES = {
+    DocType.TYPE_1: 
+    {
+        BAN_STRING: "комуникациски услуги бр\\.\\s(\\d+)",
+        CONTRACT_DATE_STRING: DATE_REGEXES,
+        "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
+        EMBG_EDB_STRING: "ЕМБГ\\:\\s(\\d{13,14})"
+    },
     DocType.TYPE_2: 
     {
-        "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
-        "contract_date": DATE_REGEXES,
+        BAN_STRING: "комуникациски услуги бр\\.\\s(\\d+)",
+        CONTRACT_DATE_STRING: DATE_REGEXES,
         "customer_type": {
             "preceding": "КОРИСНИК",
             "delimiter": " ",
             "unchanged": "[^\\s]+\\s([^\\s]+\\s[^\\s]+)"
         },
-        "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13,14})"
+        EMBG_EDB_STRING: {
+            "preceding": "ЕМБГ\\:Адреса\\:",
+            "delimiter": " ",
+            "unchanged": "(\\d{13,14})"
+        }
     },
     DocType.TYPE_3: 
     {
-        "BAN": "комуникациски услуги бр\\.\\s(\\d+)",
-        "contract_date": DATE_REGEXES,
+        BAN_STRING: "комуникациски услуги бр\\.\\s(\\d+)",
+        CONTRACT_DATE_STRING: DATE_REGEXES,
         "customer_type": "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
-        "EMBG_EDB": "ЕМБГ\\:\\s(\\d{13,14})"
+        EMBG_EDB_STRING: "ЕМБГ\\:\\s(\\d{13,14})"
     }
 }
 
 CONFIG = {
+    DocType.TYPE_1: 
+    {
+        "has_table_bounds": True,
+        "has_checkbox": True,
+        "ambiguous_embg": False
+    },
     DocType.TYPE_2: 
     {
         "has_table_bounds": False,
-        "has_checkbox": False
+        "has_checkbox": False,
+        "ambiguous_embg": True
     },
     DocType.TYPE_3: 
     {
         "has_table_bounds": True,
-        "has_checkbox": True
+        "has_checkbox": True,
+        "ambiguous_embg": False
     }
 }
 
@@ -405,45 +427,57 @@ def get_ocr_version_of_key_phrase(phrase : str, content : str) -> str:
 
     ngrams = [" ".join(words[i:i+kw_len]) for i in range(len(words) - kw_len + 1)]
 
-    print(f"{ngrams=}")
+    # print(f"{ngrams=}")
     match, score, idx = process.extractOne(phrase, ngrams)
-    print(f"Matched {phrase} with {match} => score: {score}")
+    # print(f"Matched {phrase} with {match} => score: {score}")
 
     return match
 
-def customize_regex(content : str, doc_type : DocType) -> str:
-    doc_regex_obj =  DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", {})
+def customize_regex(content : str, info_of_interest : str, doc_type : DocType) -> str:
+    doc_regex_obj =  DOCUMENT_REGEXES.get(doc_type, {}).get(info_of_interest, {})
     ocr_phrase_version = get_ocr_version_of_key_phrase(doc_regex_obj.get("preceding", ""), content)
     return ocr_phrase_version + doc_regex_obj.get("delimiter", "") + doc_regex_obj.get("unchanged", "")
 
 #USED FOR OCR (FOR NOW)
 def extract_scanned_pdf_data(img_path : Path, doc : pymupdf.Document, doc_type : DocType, file_basename : str) -> dict:
     checkbox_content = {}
+    result = {CONTRACT_DATE_STRING: "", BAN_STRING: "", EMBG_EDB_STRING: "", RESIDENT_CUSTOMER_STRING: False, BUSINESS_CUSTOMER_STRING: False}
+    # print(f"{CONFIG.get(doc_type, {}).get("has_checkbox")=}")
+    document_content = extract_content_from_page(doc[0])
     if CONFIG.get(doc_type, {}).get("has_checkbox"):
         checkbox_content = get_checkbox_content(img_path, plot=False)
+        result[RESIDENT_CUSTOMER_STRING] = checkbox_content.get(RESIDENT_CUSTOMER_STRING)
+        result[BUSINESS_CUSTOMER_STRING] = checkbox_content.get(BUSINESS_CUSTOMER_STRING)
         # print(f"{checkbox_content=}")
     else:
-        content = extract_content_from_page(doc[0])
-        regex_expression = customize_regex(content, doc_type)
-        print(f"REGEX EXPRESSION: {regex_expression}")
-        customer_type_match = re.search(regex_expression, extract_content_from_page(doc[0]), re.DOTALL)
+        # print("DOESN'T HAVE CHECKBOXES")
+        # Only Type 2 doesn't have checkbox for customer_type => special logic for it
+        regex_expression = customize_regex(document_content, "customer_type" ,doc_type)
+        # print(f"REGEX EXPRESSION: {regex_expression}")
+        customer_type_match = re.search(regex_expression, document_content, re.DOTALL)
         if customer_type_match:
             matched_string = customer_type_match.group(1)
-            print(f"{matched_string=}")
-            checkbox_content[RESIDENT_CUSTOMER_STRING] = True
-            checkbox_content[BUSINESS_CUSTOMER_STRING] = False
+            # print(f"{fuzz.ratio(matched_string, "физичко лице")=}")
+            is_resident = True if fuzz.ratio(matched_string, RESIDENT_KEYWORD) > 75 else False
+            # print(f"{matched_string=}")
+            result[RESIDENT_CUSTOMER_STRING] = is_resident
+            result[BUSINESS_CUSTOMER_STRING] = not is_resident
     table_content = ""
     if CONFIG.get(doc_type, {}).get("has_table_bounds"):
         table_content = get_table_content(img_path, file_basename)
     else:
-        table_content = extract_content_from_page(doc[0])
-    # print(f"{table_content=}")
-    document_content = extract_content_from_page(doc[0])
-    date = get_date(document_content)
-    ban = get_number(9, 10, document_content)
-    embg_edb = get_number(8, 14, table_content)
-    result = {"BAN": ban, "contract_date": date, "EMBG_EDB": embg_edb}
-    result.update(checkbox_content)
+        table_content = document_content
+    result[CONTRACT_DATE_STRING] = get_date(document_content)
+    result[BAN_STRING] = get_number(9, 10, document_content)
+    if CONFIG.get(doc_type, {}).get("ambiguous_embg"):
+        regex_expression = customize_regex(table_content, EMBG_EDB_STRING , doc_type)
+        embg_edb_match = re.search(regex_expression, table_content, re.DOTALL)
+        if embg_edb_match:
+            matched_string = embg_edb_match.group(1)
+            # print(f"EMBG_EDB MATCH: {matched_string}")
+            result[EMBG_EDB_STRING] = matched_string
+    else:
+        result[EMBG_EDB_STRING] = get_number(8, 14, table_content)
     return result
 
 def checkbox_fallback(page : pymupdf.Page, doc_type : DocType) -> dict:
@@ -454,23 +488,23 @@ def checkbox_fallback(page : pymupdf.Page, doc_type : DocType) -> dict:
 def extract_data(doc : pymupdf.Document, doc_type : DocType) -> dict:
     content = extract_content_from_page(doc[0])
     # print(f"{content=}")
-    result = {"contract_date": "", "BAN": "", "EMBG_EDB": "", RESIDENT_CUSTOMER_STRING: False, BUSINESS_CUSTOMER_STRING: False}
-    for expression in DOCUMENT_REGEXES.get(doc_type, {}).get("contract_date", []):
+    result = {CONTRACT_DATE_STRING: "", BAN_STRING: "", EMBG_EDB_STRING: "", RESIDENT_CUSTOMER_STRING: False, BUSINESS_CUSTOMER_STRING: False}
+    for expression in DOCUMENT_REGEXES.get(doc_type, {}).get(CONTRACT_DATE_STRING, []):
         match = re.search(expression, content, re.DOTALL)
         if match:
-            result["contract_date"] = match.group(0)
-    ban_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("BAN", ""), content, re.DOTALL)
+            result[CONTRACT_DATE_STRING] = match.group(0)
+    ban_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get(BAN_STRING, ""), content, re.DOTALL)
     if ban_match:
-        result["BAN"] = ban_match.group(1)
-    embg_edb_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("EMBG_EDB", ""), content, re.DOTALL)
+        result[BAN_STRING] = ban_match.group(1)
+    embg_edb_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get(EMBG_EDB_STRING, ""), content, re.DOTALL)
     if embg_edb_match:
-        result["EMBG_EDB"] = embg_edb_match.group(1)
+        result[EMBG_EDB_STRING] = embg_edb_match.group(1)
     customer_type_match = re.search(DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
     if customer_type_match:
         matched_string = customer_type_match.group(0).strip().lower()
-        print(f"{matched_string=}")
+        # print(f"{matched_string=}")
         is_resident = False
-        possible_check_marks = [chr(0x455), chr(0x78)]
+        possible_check_marks = [chr(0x455), chr(0x78), chr(0x2713), chr(0x2714), chr(0x1F5F8), chr(0x2611), chr(0x1F5F9), chr(0x10102)]
         all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
         # print(f"{all_mark_positions=}")
         if all(var == -1 for var in all_mark_positions):
@@ -547,14 +581,14 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2"
-    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2/DEBUG"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1"
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1/DEBUG"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = DocType.TYPE_2
+            doc_type = DocType.TYPE_1
             doc = pymupdf.open(Path(root_folder_path_obj / x.name))
             result = None
             name = f"document_{i}"
