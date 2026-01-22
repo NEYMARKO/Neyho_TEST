@@ -3,6 +3,7 @@ import cv2
 import fitz
 import pymupdf
 import numpy as np
+from PIL import Image
 from enum import Enum
 from pathlib import Path
 from boxdetect import config
@@ -271,7 +272,9 @@ def straightenImage(img_path : Path, dest_folder : Path) -> Path:
     if not dest_folder.exists() and not dest_folder.is_dir():
         dest_folder.mkdir(parents=True, exist_ok=True)
     save_path = dest_folder / "rotated.png"
-    cv2.imwrite(str(save_path), rotated)
+    # cv2.imwrite(str(save_path), rotated)
+    img = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+    img.save(save_path, dpi=(300, 300))
     return save_path
 
 def extract_content_from_page(page : pymupdf.Page) -> str:
@@ -581,21 +584,23 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2"
     # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1/DEBUG"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = DocType.TYPE_1
+            doc_type = DocType.TYPE_2
             doc = pymupdf.open(Path(root_folder_path_obj / x.name))
             result = None
             name = f"document_{i}"
             if not is_regular_pdf_page(doc[0]):
                 img_path = extract_img_from_pdf_page(doc[0], name)
+                rotated_path = straightenImage(img_path, Path(__file__).parent / f"rotated_imgs/document_{i}")
                 doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
-                result = extract_scanned_pdf_data(img_path, doc, doc_type, name) 
+                # result = extract_scanned_pdf_data(img_path, doc, doc_type, name) 
+                result = extract_scanned_pdf_data(rotated_path, doc, doc_type, name) 
             else:
                 result = extract_data(doc, doc_type)
             if not doc:
