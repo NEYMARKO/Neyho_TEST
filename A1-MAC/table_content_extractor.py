@@ -1,118 +1,77 @@
 import cv2
 import numpy as np
-from enum import Enum
 from pathlib import Path
-
-class ImageType(Enum):
-    ORIGINAL = 1
-    PREPROCESSED = 2
+from numpy.typing import NDArray
     
 class TableExtractor:
-    def __init__(self, image_path : Path):
-        self.original_image = cv2.imread(image_path.name)
-        self.root_output_folder = Path() / "outputs"
-        self.preprocessed_output_folder = self.root_output_folder / "preprocessed"
+    def __init__(self, image_path : Path, file_basename):
+        self.original_image: cv2.typing.MatLike | None = cv2.imread(str(image_path))
+        if self.original_image is None:
+            raise FileNotFoundError(f"Couldn't read image: {str(image_path)}")
+        height, width, channels = self.original_image.shape
+        self.original_image = self.original_image[0:int(0.5 * height), 0:width]
+        self.file_basename = file_basename
 
-    def clear_table(self) -> None:
+    def extract_table_with_fixed_perspective(self, save_path : Path) -> cv2.typing.MatLike | None:
+        if not save_path.parent.exists() or not save_path.parent.is_dir():
+            save_path.parent.mkdir(parents=True, exist_ok=True)
         preprocessed_image = self.preprocess_image()
-        # tableExtractor.show_image(ImageType.PREPROCESSED)
-        self.find_contours(preprocessed_image)
-        self.filter_contours_and_leave_only_rectangles()
-        self.find_largest_contour_by_area()
-        # cv2.imwrite(Path() / "outputs/contours/contours.png", tableExtractor.image_with_contour_with_max_area)
-        # cv2.waitKey(0)
-        self.order_points_in_the_contour_with_max_area()
-        self.calculate_new_width_and_height_of_image()
-        self.apply_perspective_transform()
-        self.add_10_percent_padding()
-        cv2.imwrite(str(Path() / "outputs/contours/perspective.png"), self.perspective_corrected_image_with_padding)
-        preprocessed_image = self.preprocess_till_invert(self.perspective_corrected_image_with_padding)
-        self.remove_table_lines(preprocessed_image)
-        self.result_path = Path() / "outputs/result/result.png"
-        cv2.imwrite(str(self.result_path), self.image_without_lines_noise_removed)
-        return
-
-    def preprocess_image(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
-        inverted_img = self.preprocess_till_invert(input_image)
-        dilated_img = cv2.dilate(inverted_img, None, iterations=5)
-        return dilated_img
+        if preprocessed_image is None:
+            return None
+        # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        # preprocessed_image = cv2.dilate(preprocessed_image, kernel, iterations=5)
+        contour_with_max_area_ordered = self.find_rect_contour_with_max_area(preprocessed_image)
+        if contour_with_max_area_ordered is None:
+            print("No rectangle contours found")
+            return None
+        perspective_corrected_image = self.apply_perspective_transform(contour_with_max_area_ordered)
+        preprocessed_image = self.preprocess_image(perspective_corrected_image)
+        cv2.imwrite(str(save_path.parent / "perspective.png"), perspective_corrected_image)
+        cv2.imwrite(str(save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
+        cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
+        return perspective_corrected_image
     
-    def preprocess_till_invert(self, input_image : cv2.typing.MatLike | None = None) -> cv2.typing.MatLike:
-        gray_img = cv2.cvtColor(self.original_image if input_image is None else input_image, cv2.COLOR_BGR2GRAY)
+    def clear_table(self, save_path : Path) -> None:
+        self.save_path = save_path
+        if not save_path.parent.exists() or not save_path.parent.is_dir():
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+        # perspective_corrected_image = self.extract_table_with_fixed_perspective(save_path)
+        # if perspective_corrected_image is None:
+        #     print("Couldn't generate perspective image")
+        #     return 
+        # preprocessed_image = self.preprocess_image(perspective_corrected_image, use_gauss=False)
+        preprocessed_image = self.preprocess_image()
+        if preprocessed_image is None:
+            return None
+        contour_with_max_area_ordered = self.find_rect_contour_with_max_area(preprocessed_image)
+        if contour_with_max_area_ordered is None:
+            print("No rectangle contours found")
+            return None
+        cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
+        top_left, top_right, bottom_right, bottom_left = contour_with_max_area_ordered
+        lowest_x, lowest_y = top_left 
+        highest_x, highest_y = bottom_right 
+        if preprocessed_image is not None:
+            self.remove_table_lines(preprocessed_image[int(lowest_y) : int(highest_y), int(lowest_x) : int(highest_x)])
+            # self.remove_table_lines(preprocessed_image)
+        cv2.imwrite(str(save_path.parent / "combined_lines.png"), self.combined_lines)
+        cv2.imwrite(str(save_path), self.image_without_lines_noise_removed)
+        return
+    
+    def preprocess_image(self, input_image : cv2.typing.MatLike | None = None, use_gauss : bool = False) -> cv2.typing.MatLike | None:
+        image: cv2.typing.MatLike | None = (
+            self.original_image if input_image is None else input_image
+        )
+        if image is None:
+            return None 
+        gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if use_gauss and image is not None:
+            gray_img = cv2.GaussianBlur(gray_img, (3,3), 0)
         threshold_img = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         inverted_img = cv2.bitwise_not(threshold_img)
         return inverted_img
-    def find_contours(self, image : cv2.typing.MatLike) -> None:
-        self.contours, self.hierarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        self.original_image_with_all_contours = self.original_image.copy()
-        cv2.drawContours(self.original_image_with_all_contours, self.contours, -1, (0, 255, 0), 3)
-    
-    def filter_contours_and_leave_only_rectangles(self):
-        self.rectangular_contours = []
-        for contour in self.contours:
-            peri = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
-            if len(approx) == 4:
-                self.rectangular_contours.append(approx)
-        # Below lines are added to show all rectangular contours
-        # This is not needed, but it is useful for debugging
-        self.original_image_with_only_rectangular_contours = self.original_image.copy()
-        cv2.drawContours(self.original_image_with_only_rectangular_contours, self.rectangular_contours, -1, (0, 255, 0), 3)
 
-    def find_largest_contour_by_area(self):
-        max_area = 0
-        self.contour_with_max_area = None
-        for contour in self.rectangular_contours:
-            area = cv2.contourArea(contour)
-            if area > max_area:
-                max_area = area
-                self.contour_with_max_area = contour
-        # Below lines are added to show the contour with max area
-        # This is not needed, but it is useful for debugging
-        self.original_image_with_contour_with_max_area = self.original_image.copy()
-        cv2.drawContours(self.original_image_with_contour_with_max_area, [self.contour_with_max_area], -1, (0, 255, 0), 3)
-
-    def find_and_filter_contours(self) -> None:
-        """
-        1. Uses OpenCV to find all contours.
-        2. Loops through the countours and leaves only the rectangular ones.
-        3. Finds the largest contour by area - is presumed to be the table.
-        """
-        return
-
-    def add_10_percent_padding(self):
-        image_height = self.original_image.shape[0]
-        padding = int(image_height * 0.1)
-        self.perspective_corrected_image_with_padding = cv2.copyMakeBorder(self.perspective_corrected_image, padding, padding, padding, padding, cv2.BORDER_CONSTANT, value=[255, 255, 255])
-
-    def order_points_in_the_contour_with_max_area(self):
-        self.contour_with_max_area_ordered = self.order_points(self.contour_with_max_area)
-        # The code below is to plot the points on the image
-        # it is not required for the perspective transform
-        # it will help you to understand and debug the code
-        self.original_image_with_points_plotted = self.original_image.copy()
-        for point in self.contour_with_max_area_ordered:
-            point_coordinates = (int(point[0]), int(point[1]))
-            self.original_image_with_points_plotted = cv2.circle(self.original_image_with_points_plotted, point_coordinates, 10, (0, 0, 255), -1)
-    def calculate_new_width_and_height_of_image(self):
-        existing_image_width = self.original_image.shape[1]
-        existing_image_width_reduced_by_10_percent = int(existing_image_width * 0.9)
-        
-        distance_between_top_left_and_top_right = self.calculateDistanceBetween2Points(self.contour_with_max_area_ordered[0], self.contour_with_max_area_ordered[1])
-        distance_between_top_left_and_bottom_left = self.calculateDistanceBetween2Points(self.contour_with_max_area_ordered[0], self.contour_with_max_area_ordered[3])
-        aspect_ratio = distance_between_top_left_and_bottom_left / distance_between_top_left_and_top_right
-        self.new_image_width = existing_image_width_reduced_by_10_percent
-        self.new_image_height = int(self.new_image_width * aspect_ratio)
-    def apply_perspective_transform(self):
-        pts1 = np.float32(self.contour_with_max_area_ordered)
-        pts2 = np.float32([[0, 0], [self.new_image_width, 0], [self.new_image_width, self.new_image_height], [0, self.new_image_height]])
-        matrix = cv2.getPerspectiveTransform(pts1, pts2)
-        self.perspective_corrected_image = cv2.warpPerspective(self.original_image, matrix, (self.new_image_width, self.new_image_height))
-    # Below are helper functions
-    def calculateDistanceBetween2Points(self, p1, p2):
-        dis = ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
-        return dis
-    def order_points(self, pts):
+    def order_points(self, pts) -> NDArray[np.float32]:
         # initialzie a list of coordinates that will be ordered
         # such that the first entry in the list is the top-left,
         # the second entry is the top-right, the third is the
@@ -133,62 +92,168 @@ class TableExtractor:
         # return the ordered coordinates
         return rect
 
+    def find_rect_contour_with_max_area(self, inverted_image : cv2.typing.MatLike) -> NDArray[np.float32] |  None:
+        """
+        1. Uses OpenCV to find all contours.
+        2. Loops through the countours and leaves only the rectangular ones.
+        3. Finds the largest contour by area - is presumed to be the table.
+        """
+        # Assert should only be used in debug, but since I am raising error in the constructor,
+        # it won't do any harm but will remove red underlines in .copy() function call
+        assert self.original_image is not None
+        # Find all contours in the image and draw them over original_image
+        inverted_image = self.extract_horizontal_and_vertical_lines(inverted_image, use_final_dilate=True)
+        cv2.imwrite(str(self.save_path.parent / "inverted_image.png"), inverted_image)
+        contours, hierarchy = cv2.findContours(inverted_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        original_image_with_all_contours = self.original_image.copy()
+        cv2.drawContours(original_image_with_all_contours, contours, -1, (0, 255, 0), 3)
+        cv2.imwrite(str(self.save_path.parent / "all_contours.png"), original_image_with_all_contours)
+        # Filter contours and leave only rectangular ones
+        rectangular_contours = []
+        for contour in contours:
+            peri = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
+            if len(approx) == 4:
+                rectangular_contours.append(approx)
+        self.original_image_with_only_rectangular_contours = self.original_image.copy()
+        cv2.drawContours(self.original_image_with_only_rectangular_contours, rectangular_contours, -1, (0, 255, 0), 3)
+        cv2.imwrite(str(self.save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
+        # Find largest contour by area (in the list of all rectangular contours)
+        max_area = 0
+        contour_with_max_area = None
+        for contour in rectangular_contours:
+            area = cv2.contourArea(contour)
+            if area > max_area:
+                max_area = area
+                contour_with_max_area = contour
+        self.original_image_with_contour_with_max_area = self.original_image.copy()
+        if contour_with_max_area is None:
+            return None
+        x, y, w, h = cv2.boundingRect(contour_with_max_area)
+        rect = np.array([
+            [x, y],           # top-left: min x, min y
+            [x + w, y],       # top-right: max x, min y
+            [x + w, y + h],   # bottom-right: max x, max y
+            [x, y + h]        # bottom-left: min x, max y
+        ], dtype=np.float32)
 
-    def erode_vertical_lines(self, inverted_image : cv2.typing.MatLike) -> None:
-        hor = np.array([[1,1,1,1,1,1]])
-        self.vertical_lines_eroded_image = cv2.erode(inverted_image, hor, iterations=15)
-        self.vertical_lines_eroded_image = cv2.dilate(self.vertical_lines_eroded_image, hor, iterations=10)
-        return
-    def erode_horizontal_lines(self, inverted_image : cv2.typing.MatLike) -> None:
-        ver = np.array([[1],
-            [1],
-            [1],
-            [1],
-            [1],
-            [1],
-            [1]])
-        self.horizontal_lines_eroded_image = cv2.erode(inverted_image, ver, iterations=12)
-        self.horizontal_lines_eroded_image = cv2.dilate(self.horizontal_lines_eroded_image, ver, iterations=10)
-        return
-    def combine_erroded_images(self) -> None:
-        self.combined_image = cv2.add(self.vertical_lines_eroded_image, self.horizontal_lines_eroded_image)
-        return
-    
+        # cv2.drawContours(self.original_image_with_contour_with_max_area, [contour_with_max_area], -1, (0, 255, 0), 3)
+        cv2.drawContours(self.original_image_with_contour_with_max_area, [rect.astype(np.int32)], -1, (0, 255, 0), 3)
+        return self.order_points(contour_with_max_area)
 
-    def dilate_combined_image_to_make_lines_thicker(self) -> None:
+    def calculate_new_width_and_height_of_image(self, contour_with_max_area_ordered) -> tuple[float, float]:
+        top_left, top_right, bottom_right, bottom_left = contour_with_max_area_ordered
+
+        width_top = np.linalg.norm(top_right - top_left)
+        width_bottom = np.linalg.norm(bottom_right - bottom_left)
+        height_left = np.linalg.norm(bottom_left - top_left)
+        height_right = np.linalg.norm(bottom_right - top_right)
+
+        target_width = int(max(width_top, width_bottom))
+        target_height = int(max(height_left, height_right))
+        return (target_width, target_height)
+
+    def apply_perspective_transform(self, contour_with_max_area_ordered) -> cv2.typing.MatLike:
+        new_width, new_height = self.calculate_new_width_and_height_of_image(contour_with_max_area_ordered)
+        pts1 = np.float32(contour_with_max_area_ordered)
+        pts2 = np.float32([
+            [0, 0], 
+            [new_width - 1, 0], 
+            [new_width - 1, new_height - 1], 
+            [0, new_height - 1]]
+        )
+        matrix = cv2.getPerspectiveTransform(pts1, pts2)
+        perspective_corrected_image = cv2.warpPerspective(
+            self.original_image, 
+            matrix, 
+            (new_width, new_height), 
+            flags=cv2.INTER_CUBIC,  # ✅ Better for text
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(255, 255, 255)
+        )
+        kernel_sharpen = np.array([
+            [-1, -1, -1],
+            [-1,  9, -1],
+            [-1, -1, -1]
+        ])
+        perspective_corrected_image = cv2.filter2D(perspective_corrected_image, -1, kernel_sharpen)
+        return perspective_corrected_image
+    # Below are helper functions
+    def calculateDistanceBetween2Points(self, p1, p2):
+        dis = ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
+        return dis
+
+    def extract_horizontal_and_vertical_lines(self, inverted_image : cv2.typing.MatLike, use_final_dilate : bool = False) -> cv2.typing.MatLike:
+        # Erode everything that isn't horizontal line of length 20px
+        # Dilate result to make it thicker
+        # Product are table horizontal bounds
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1))
+        horizontal_lines = cv2.erode(inverted_image, horizontal_kernel, iterations=5)
+        horizontal_lines = cv2.dilate(horizontal_lines, horizontal_kernel, iterations=10)
+        # horizontal_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+        
+        # Erode everything that isn't vertical line of length 20px
+        # Dilate result to make it thicker
+        # Product are table vertical bounds
+        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
+        vertical_lines = cv2.erode(inverted_image, vertical_kernel, iterations=5)
+        vertical_lines = cv2.dilate(vertical_lines, vertical_kernel, iterations=10)
+        # vertical_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+        
+        # Combine vertical and horiziontal lines into new image
+        all_lines = cv2.add(horizontal_lines, vertical_lines)
+        if use_final_dilate:
+            all_lines = cv2.dilate(all_lines, cv2.getStructuringElement(cv2.MORPH_RECT, (3,3)), iterations=3)
+        cv2.imwrite(str(self.save_path.parent / "extracted_lines.png"), all_lines)
+        return all_lines
+    # def extract_horizontal_and_vertical_lines(self, inverted_image: cv2.typing.MatLike) -> cv2.typing.MatLike:
+    #     # Extract horizontal lines
+    #     horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 1))
+    #     horizontal_lines = cv2.erode(inverted_image, horizontal_kernel, iterations=5)
+    #     horizontal_lines = cv2.dilate(horizontal_lines, horizontal_kernel, iterations=10)
+        
+    #     # Extract vertical lines
+    #     vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 20))
+    #     vertical_lines = cv2.erode(inverted_image, vertical_kernel, iterations=5)
+    #     vertical_lines = cv2.dilate(vertical_lines, vertical_kernel, iterations=10)
+        
+    #     # Combine lines
+    #     all_lines = cv2.add(horizontal_lines, vertical_lines)
+        
+    #     # NEW: Close gaps to form connected boundaries
+    #     # Use a larger kernel to connect nearby line segments
+    #     closing_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    #     all_lines = cv2.morphologyEx(all_lines, cv2.MORPH_CLOSE, closing_kernel, iterations=2)
+        
+    #     # Optional: Fill any remaining small holes
+    #     # This ensures a solid closed contour
+    #     closing_kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    #     all_lines = cv2.morphologyEx(all_lines, cv2.MORPH_CLOSE, closing_kernel2, iterations=1)
+        
+    #     return all_lines
+
+    def remove_table_lines(self, inverted_image: cv2.typing.MatLike) -> None:
+        """Improved line removal that preserves text better"""
+        
+        all_lines = self.extract_horizontal_and_vertical_lines(inverted_image)
+        # Minimal dilation to ensure complete coverage
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        self.combined_image_dilated = cv2.dilate(self.combined_image, kernel, iterations=7)
-        return
+        all_lines_dilated = cv2.dilate(all_lines, kernel, iterations=1)
+        self.combined_lines = all_lines_dilated
 
-    def subtract_combined_and_dilated_image_from_original_image(self, inverted_image : cv2.typing.MatLike) -> None:
-        self.image_without_lines = cv2.subtract(inverted_image, self.combined_image_dilated)
-        return
-    
-    def remove_noise_with_erode_and_dilate(self) -> None:
+        # Subtract combined lines from inverted image to get only table elements (without bounds)
+        self.image_without_lines = cv2.subtract(inverted_image, all_lines_dilated)
+        
+        # No noise removal (or very minimal)
+        # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        # self.image_without_lines_noise_removed = cv2.morphologyEx(self.image_without_lines, cv2.MORPH_OPEN, kernel, iterations=1)
+        # self.image_without_lines_noise_removed = self.image_without_lines
+        self.image_without_lines = cv2.GaussianBlur(self.image_without_lines, (5,5), 0)
+        # self.image_without_lines = cv2.GaussianBlur(self.image_without_lines, (3,3), 0)
+        
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines, kernel, iterations=3)
-        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=4)
-        return
-    
-    def remove_table_lines(self, inverted_image : cv2.typing.MatLike) -> None:
-        self.erode_horizontal_lines(inverted_image)
-        self.erode_vertical_lines(inverted_image)
-        cv2.imwrite(Path() / "outputs/result/new_horizontal_erroded.png", self.horizontal_lines_eroded_image)
-        cv2.imwrite(Path() / "outputs/result/vertical_erroded.png", self.vertical_lines_eroded_image)
-        self.combine_erroded_images()
-        self.dilate_combined_image_to_make_lines_thicker()
-        cv2.imwrite(Path() / "outputs/result/combined_eroded.png", self.combined_image_dilated)
-        self.subtract_combined_and_dilated_image_from_original_image(inverted_image)
-        self.remove_noise_with_erode_and_dilate()
-
-    # def show_image(self, type : ImageType) -> None:
-    #     match type:
-    #         case ImageType.ORIGINAL:
-    #             cv2.imshow('original_image', self.original_image)
-    #             return
-    #         case ImageType.PREPROCESSED:
-    #             cv2.imshow('preprocessed_image', self.preprocessed_image)
-    #         case _:
-    #             return
-    #     cv2.waitKey(0)
-    #     return
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines, kernel, iterations=0)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        self.image_without_lines_noise_removed = cv2.erode(self.image_without_lines_noise_removed, kernel, iterations=0)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        self.image_without_lines_noise_removed = cv2.dilate(self.image_without_lines_noise_removed, kernel, iterations=0)
