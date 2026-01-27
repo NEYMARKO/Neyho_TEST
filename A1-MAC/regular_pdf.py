@@ -15,10 +15,11 @@ def main():
     block = re.sub(r' {2,}', '\n', block)
     # block = re.sub(' +', '', block)
     block = block.split("\n")
-    print(f"{block=}\n\n")
+    # print(f"{block=}\n\n")
 
-    for element in block:
-        print(element)
+    print(" ".join(block))
+    # for element in block:
+    #     print(element)
     # words = page.get_text("xml")
     # print(f"{words=}")
     # for page in doc:
