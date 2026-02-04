@@ -20,59 +20,6 @@ regs = {'3': [
 
 RESIDENT_KEYWORD = "физичко лице"
 
-# DOC_NAME_TO_TYPE_MAP = {
-#     "Договор за засновање претплатнички однос за користење": DocType.TYPE_1,
-#     "Договор за купопродажба на уреди со одложено плаќање на рати": DocType.TYPE_2,
-#     "Договор за користење на јавни комуникациски услуги": DocType.TYPE_3,
-#     "Договор за користење на јавни комуникациски услуги ---- CHANGE MEEEEEE": DocType.TYPE_4,
-#     "БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК": DocType.TYPE_5
-# }
-
-
-class VisualDebugger:
-    def __init__(self):
-        return
-    def plot_img(self):
-        return
-    def draw_img(self):
-        return
-
-    def split_document_with_rectangular_contours(self, img_path : str, section_cnt : int, direction : int = 0) -> None:
-        img = cv2.imread(img_path)
-        width = img.shape[1]
-        height = img.shape[0]
-        horizontal_contour_rects = []
-        vertical_contour_rects = []
-        for i in range(1, section_cnt):
-            x_low = int(width * ((i - 1) / section_cnt))
-            x_high = int(width * (i / section_cnt))
-            y_low = int(height * ((i - 1) / section_cnt))
-            y_high = int(height * (i / section_cnt))
-            rect = np.array(
-                [
-                (0, y_low),
-                (width, y_low),
-                (width, y_high),
-                (0, y_high)
-                ],
-                dtype=np.int32
-            ).reshape(-1,1,2)
-            horizontal_contour_rects.append(rect)
-            rect = np.array(
-                [
-                (x_low, 0),
-                (x_high, 0),
-                (x_high, height),
-                (x_low, height)
-                ],
-                dtype=np.int32
-            ).reshape(-1,1,2)
-            vertical_contour_rects.append(rect)
-        cv2.drawContours(img, horizontal_contour_rects if not direction else vertical_contour_rects, -1, (0, 0, 255), 8)
-        cv2.imwrite(img_path[:-4] + "contours.png", img)
-        return
-
-
 def straightenImage(img_path : Path, dest_folder : Path) -> Path:
     data = np.fromfile(img_path, dtype=np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
@@ -110,6 +57,7 @@ def straightenImage(img_path : Path, dest_folder : Path) -> Path:
     rotated = cv2.warpAffine(image, rotation_matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
     if not dest_folder.exists() and not dest_folder.is_dir():
         dest_folder.mkdir(parents=True, exist_ok=True)
+    # rotated = cv2.rotate(rotated, cv2.ROTATE_90_CLOCKWISE)
     save_path = dest_folder / "rotated.png"
     # cv2.imwrite(str(save_path), rotated)
     img = Image.fromarray(cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY))
@@ -273,11 +221,9 @@ def get_ocr_version_of_key_phrase(phrase : str, content : str) -> str:
     match, score, idx = process.extractOne(phrase, ngrams)
     # print(f"Matched {phrase} with {match} => score: {score}")
 
-    return match
+    return match if score > 70 else ""
 
-def customize_regex(info_of_interest : str, content : str, doc_regex_obj : dict) -> str:
-    # doc_regex_obj =  hc.DOCUMENT_REGEXES.get(doc_type, {}).get(info_of_interest, {})
-    # print(f"Customize regex for info: {info_of_interest} - object : {doc_regex_obj}")
+def customize_regex(content : str, doc_regex_obj : dict) -> str:
     ocr_phrase_version = get_ocr_version_of_key_phrase(doc_regex_obj.get("preceding", ""), content)
     return ocr_phrase_version + doc_regex_obj.get("unchanged", "")
 
@@ -293,25 +239,25 @@ def get_regex_match(regex : str, content : str) -> str:
 
 def find_info_with_regex(relevant_info : str, content : str, document_regexes : dict, modify_regex : bool = False) -> str:
     regex_expr = document_regexes.get(relevant_info, None)
-    # print(f"{regex_expr=} for {relevant_info}")
     reg = ""
     if not regex_expr:
         return ""
     if isinstance(regex_expr, list):
         for reg in regex_expr:
             if modify_regex:
-                reg = customize_regex(relevant_info, content, document_regexes)
+                reg = customize_regex(content, reg)
             # matched_string = re.search(reg, content, re.DOTALL)
+            # print(f"customized regex: {reg}")
             matched_string = get_regex_match(reg, content)
             if matched_string:
                 return matched_string
     elif isinstance(regex_expr, str):
         if modify_regex:
-            regex_expr = customize_regex(relevant_info, content, document_regexes)
+            regex_expr = customize_regex(content, document_regexes)
         return get_regex_match(regex_expr, content)
     elif isinstance(regex_expr, dict):
         if modify_regex:
-            reg = customize_regex(relevant_info, content, regex_expr)
+            reg = customize_regex(content, regex_expr)
         else:
             reg = regex_expr.get(hc.PRECEDING_STRING, "") + regex_expr.get(hc.UNCHANGED_STRING, "")
         # print(f"reg for {relevant_info}: {reg}")
@@ -327,6 +273,7 @@ def extract_ocr_data(img_path : Path, doc : pymupdf.Document, doc_type : hc.DocT
     result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
     # print(f"{CONFIG.get(doc_type, {}).get("has_checkbox")=}")
     document_content = extract_content_from_page(doc[0])
+    # print(f"{document_content=}")
     if hc.CONFIG.get(doc_type, {}).get("has_checkbox"):
         checkbox_content = get_checkbox_content(img_path, plot=False)
         result[hc.RESIDENT_CUSTOMER_STRING] = checkbox_content.get(hc.RESIDENT_CUSTOMER_STRING)
@@ -334,11 +281,8 @@ def extract_ocr_data(img_path : Path, doc : pymupdf.Document, doc_type : hc.DocT
         # print(f"{checkbox_content=}")
     else:
         #ONLY TYPE_2 AND TYPE_4 DON'T HAVE CHECKBOXES
-
-        # print("DOESN'T HAVE CHECKBOXES")
-        # Only Type 2 doesn't have checkbox for customer_type => special logic for it
-        # regex_expression = customize_regex(document_content, "customer_type", doc_type)
-        customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content[:int(len(document_content) * 0.2)], hc.OCR_DOCUMENT_REGEXES.get(doc_type, {}), modify_regex=True)
+        customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content[:int(len(document_content) * 0.2)], 
+                                                            document_regexes, modify_regex=True)
         if (doc_type == hc.DocType.TYPE_2):
             resident_score = fuzz.ratio(customer_type_matched_string, document_regexes.get(hc.RESIDENT_CUSTOMER_STRING, ""))
             business_score = fuzz.ratio(customer_type_matched_string, document_regexes.get(hc.BUSINESS_CUSTOMER_STRING, ""))
@@ -360,90 +304,18 @@ def extract_ocr_data(img_path : Path, doc : pymupdf.Document, doc_type : hc.DocT
                 matched_string = get_regex_match(reg, document_content)
                 if matched_string:
                     print(f"in customer type: {matched_string=}")
-        # print(f"{document_content[:int(len(document_content) * 0.2)]=}")
-        # print(f"{customer_type_matched_string=}")    
-        
-    
-        # print(f"REGEX EXPRESSION: {regex_expression}")
-        # customer_type_match = re.search(regex_expression, document_content, re.DOTALL)
-        # if customer_type_match:
-        #     try:
-        #         matched_string = customer_type_match.group(1)
-        #     except IndexError:
-        #         matched_string = customer_type_match.group(0)
-        #     # print(f"{fuzz.ratio(matched_string, "физичко лице")=}")
-        #     is_resident = True if fuzz.ratio(matched_string, RESIDENT_KEYWORD) > 75 else False
-        #     # print(f"{matched_string=}")
-        #     result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
-        #     result[hc.BUSINESS_CUSTOMER_STRING] = not is_resident
     table_content = ""
     if hc.CONFIG.get(doc_type, {}).get("has_table_bounds"):
         table_content = get_table_content(img_path, file_basename)
         # print(f"{table_content=}")
     else:
         table_content = document_content
-    # print(f"{document_content=}")
-    # print(f"{table_content=}")
     result[hc.CONTRACT_DATE_STRING] = get_date(document_content)
-    # result[hc.BAN_STRING] = get_number(9, 9, document_content)
-    ban_matched_string = find_info_with_regex(hc.BAN_STRING, document_content, hc.OCR_DOCUMENT_REGEXES.get(doc_type, {}))
+    ban_matched_string = find_info_with_regex(hc.BAN_STRING, document_content, document_regexes, modify_regex=True)
     result[hc.BAN_STRING] = ban_matched_string
-    # if hc.CONFIG.get(doc_type, {}).get("ambiguous_embg"):
-    #     regex_expression = customize_regex(table_content, hc.EMBG_EDB_STRING , hc.OCR_DOCUMENT_REGEXES.get(doc_type, {}))
-    #     embg_edb_match = re.search(regex_expression, table_content, re.DOTALL)
-    #     if embg_edb_match:
-    #         matched_string = embg_edb_match.group(1)
-    #         # print(f"EMBG_EDB MATCH: {matched_string}")
-    #         result[hc.EMBG_EDB_STRING] = matched_string
-    # else:
-    #     result[hc.EMBG_EDB_STRING] = get_number(13, 13, table_content)
-    emdg_edb_matched_string = find_info_with_regex(hc.EMBG_EDB_STRING, table_content, hc.OCR_DOCUMENT_REGEXES.get(doc_type, {}))
+    emdg_edb_matched_string = find_info_with_regex(hc.EMBG_EDB_STRING, table_content, document_regexes, modify_regex=True)
 
     result[hc.EMBG_EDB_STRING] = emdg_edb_matched_string
-    # print(f"{result=}")
-    # result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: False, hc.BUSINESS_CUSTOMER_STRING: False}
-    # # print(f"{CONFIG.get(doc_type, {}).get("has_checkbox")=}")
-    # document_content = extract_content_from_page(doc[0])
-    # if hc.CONFIG.get(doc_type, {}).get("has_checkbox"):
-    #     checkbox_content = get_checkbox_content(img_path, plot=False)
-    #     result[hc.RESIDENT_CUSTOMER_STRING] = checkbox_content.get(hc.RESIDENT_CUSTOMER_STRING)
-    #     result[hc.BUSINESS_CUSTOMER_STRING] = checkbox_content.get(hc.BUSINESS_CUSTOMER_STRING)
-    #     # print(f"{checkbox_content=}")
-    # else:
-    #     # print("DOESN'T HAVE CHECKBOXES")
-    #     # Only Type 2 doesn't have checkbox for customer_type => special logic for it
-    #     regex_expression = customize_regex(document_content, "customer_type" ,doc_type)
-    #     # print(f"REGEX EXPRESSION: {regex_expression}")
-    #     customer_type_match = re.search(regex_expression, document_content, re.DOTALL)
-    #     if customer_type_match:
-    #         try:
-    #             matched_string = customer_type_match.group(1)
-    #         except IndexError:
-    #             matched_string = customer_type_match.group(0)
-    #         # print(f"{fuzz.ratio(matched_string, "физичко лице")=}")
-    #         is_resident = True if fuzz.ratio(matched_string, RESIDENT_KEYWORD) > 75 else False
-    #         # print(f"{matched_string=}")
-    #         result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
-    #         result[hc.BUSINESS_CUSTOMER_STRING] = not is_resident
-    # table_content = ""
-    # if hc.CONFIG.get(doc_type, {}).get("has_table_bounds"):
-    #     table_content = get_table_content(img_path, file_basename)
-    #     # print(f"{table_content=}")
-    # else:
-    #     table_content = document_content
-    # # print(f"{document_content=}")
-    # # print(f"{table_content=}")
-    # result[hc.CONTRACT_DATE_STRING] = get_date(document_content)
-    # result[hc.BAN_STRING] = get_number(9, 9, document_content)
-    # if hc.CONFIG.get(doc_type, {}).get("ambiguous_embg"):
-    #     regex_expression = customize_regex(table_content, hc.EMBG_EDB_STRING , doc_type)
-    #     embg_edb_match = re.search(regex_expression, table_content, re.DOTALL)
-    #     if embg_edb_match:
-    #         matched_string = embg_edb_match.group(1)
-    #         # print(f"EMBG_EDB MATCH: {matched_string}")
-    #         result[hc.EMBG_EDB_STRING] = matched_string
-    # else:
-    #     result[hc.EMBG_EDB_STRING] = get_number(13, 13, table_content)
     return result
 
 def checkbox_fallback(page : pymupdf.Page, doc_type : hc.DocType) -> dict:
@@ -459,7 +331,7 @@ def extract_data(doc : pymupdf.Document, doc_type : hc.DocType) -> dict:
     content = extract_content_from_page(doc[0])
     # print(f"{content=}")
     result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
-    date_matched_string = find_info_with_regex(hc.CONTRACT_DATE_STRING, content, hc.DOCUMENT_REGEXES.get(doc_type, {}))
+    date_matched_string = find_info_with_regex(hc.CONTRACT_DATE_STRING, content, document_regexes)
     if date_matched_string:
         result[hc.CONTRACT_DATE_STRING] = date_matched_string
     ban_matched_string = find_info_with_regex(hc.BAN_STRING, content, document_regexes)
@@ -514,44 +386,10 @@ def extract_data(doc : pymupdf.Document, doc_type : hc.DocType) -> dict:
                 is_resident = any(var == 0 for var in all_mark_positions)
                 result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
                 result[hc.BUSINESS_CUSTOMER_STRING] = not is_resident
-    # ban_match = re.search(hc.DOCUMENT_REGEXES.get(doc_type, {}).get(hc.BAN_STRING, ""), content, re.DOTALL)
-    # if ban_match:
-    #     try:
-    #         result[hc.BAN_STRING] = ban_match.group(1)
-    #     except IndexError:
-    #         result[hc.BAN_STRING] = ban_match.group(0)
-    # embg_edb_match = re.search(hc.DOCUMENT_REGEXES.get(doc_type, {}).get(hc.EMBG_EDB_STRING, ""), content, re.DOTALL)
-    # if embg_edb_match:
-    #     try:
-    #         result[hc.EMBG_EDB_STRING] = embg_edb_match.group(1)
-    #     except IndexError:
-    #         result[hc.EMBG_EDB_STRING] = embg_edb_match.group(0)
-    # customer_type_match = re.search(hc.DOCUMENT_REGEXES.get(doc_type, {}).get("customer_type", ""), content, re.DOTALL)
-    # if customer_type_match:
-    #     matched_string = customer_type_match.group(0).strip().lower()
-    #     # print(f"{matched_string=}")
-    #     is_resident = False
-    #     possible_check_marks = [chr(0x455), chr(0x78), chr(0x2713), chr(0x2714), chr(0x1F5F8), chr(0x2611), chr(0x1F5F9), chr(0x10102)]
-    #     all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
-    #     # print(f"{all_mark_positions=}")
-    #     if all(var == -1 for var in all_mark_positions):
-    #         # print("GOING FOR FALLBACK")
-    #         checkbox_result = checkbox_fallback(doc[0], doc_type)
-    #         # print(f"{checkbox_result=}")
-    #         if not checkbox_result:
-    #             # raise ValueError("Unable to detect checked box")
-    #             print("UNABLE TO DETECT CHECKBOXES")            
-    #         else:
-    #             result[hc.RESIDENT_CUSTOMER_STRING] = checkbox_result.get(hc.RESIDENT_CUSTOMER_STRING)
-    #             result[hc.BUSINESS_CUSTOMER_STRING] = checkbox_result.get(hc.BUSINESS_CUSTOMER_STRING)
-    #     else:
-    #         is_resident = any(var == 0 for var in all_mark_positions)
-    #         result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
-    #         result[hc.BUSINESS_CUSTOMER_STRING] = not is_resident
     return result
 
 
-def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str) -> Path:
+def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str, preprocess : bool = False) -> Path:
     """
     Extracts and saves image contained in pdf page and saves them in <root>/extracted_imgs folder
     DPI needs to 300 (ocr engines assume 300 dpi)
@@ -583,7 +421,73 @@ def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str) -> Path:
         dest_folder.mkdir(parents=True, exist_ok=True)
     img_path = dest_folder / "extracted.png"
     # print(f"{img_path=}")
-    pix.save(str(img_path))
+    if preprocess:
+        kernel_size = 10
+        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, binary_mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        cv2.imwrite(str(img_path.parent / "binary_mask.png"), binary_mask)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
+        expanded_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel)
+        expanded_mask = cv2.dilate(expanded_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (11,11)), iterations=20)
+        cv2.imwrite(str(img_path.parent / "expanded_mask.png"), expanded_mask)
+        contours, _ = cv2.findContours(expanded_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            print("No non-white areas found")
+            return Path()
+        # print(f"{contours=}")
+        original_image_with_all_contours = img.copy()
+        cv2.drawContours(original_image_with_all_contours, contours, -1, (0, 255, 0), 3)
+        cv2.imwrite(str(img_path.parent / "all_conturs.png"), original_image_with_all_contours)
+        # Find the largest contour
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        cv2.imwrite(str(img_path), img)
+        x = max(x, 0)
+        y = max(y, 0)
+        w = min(w, img.shape[1] - x)
+        h = min(h, img.shape[0] - y)
+        
+        # Crop the image based on the adjusted bounding box
+        cropped_image = img[y:y + h, x:x + w]
+        # orig_width, orig_height, channels = img.shape
+        # cropped_width, cropped_height, cropped_channels = cropped_image.shape
+        # aspect_ratio = cropped_width / orig_width if orig_width > orig_height else cropped_height / orig_height
+        # cropped_image = cv2.resize(cropped_image, (int(orig_width * aspect_ratio), int(orig_height * aspect_ratio)), interpolation=cv2.INTER_LANCZOS4)
+        upscaled = cv2.resize(cropped_image, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+        cv2.imwrite(str(img_path.parent / "upscaled.png"), upscaled)
+        cropped_img_path = img_path.parent / "cropped.png"
+        cv2.imwrite(str(cropped_img_path), cropped_image)
+        if len(upscaled.shape) == 3:
+            gray_upscaled = cv2.cvtColor(upscaled, cv2.COLOR_BGR2GRAY)
+        else:
+            gray_upscaled = upscaled
+        
+        # Check polarity
+        if np.mean(gray_upscaled) < 127:
+            gray_upscaled = 255 - gray_upscaled
+        
+        # Denoise
+        denoised = cv2.fastNlMeansDenoising(gray_upscaled, None, h=8, templateWindowSize=7, searchWindowSize=21)
+        
+        # Enhance contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(denoised)
+        
+        # Binarize (Otsu works well for small text after upscaling)
+        _, binary = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Double-check polarity
+        if np.sum(binary == 0) > np.sum(binary == 255):
+            binary = 255 - binary
+        
+        # Save preprocessed image
+        cropped_img_path = img_path.parent / "cropped_preprocessed.png"
+        cv2.imwrite(str(cropped_img_path), binary)
+        return cropped_img_path
+    else:
+        pix.save(str(img_path))
     return img_path
 
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
@@ -608,23 +512,26 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4/DEBUG"
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_1"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2"
+    # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = hc.DocType.TYPE_1
+            doc_type = hc.DocType.TYPE_2
             doc = pymupdf.open(Path(root_folder_path_obj / x.name))
             result = None
             name = f"document_{i}"
             if not is_regular_pdf_page(doc[0]):
-                img_path = extract_img_from_pdf_page(doc[0], name)
+                img_path = extract_img_from_pdf_page(doc[0], name, preprocess=False)
+                # print(f"Returned path: {str(img_path)}")
+                # img = image = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                # cv2.imwrite(str(Path(__file__).parent / f"rotated_imgs/document_{i}/rotated.png"), img)
                 rotated_path = straightenImage(img_path, Path(__file__).parent / f"rotated_imgs/document_{i}")
                 doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
-                # result = extract_scanned_pdf_data(img_path, doc, doc_type, name) 
                 result = extract_ocr_data(rotated_path, doc, doc_type, name) 
+                # result = extract_ocr_data(img_path, doc, doc_type, name) 
             else:
                 result = extract_data(doc, doc_type)
             if not doc:
