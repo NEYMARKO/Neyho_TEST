@@ -23,7 +23,8 @@ RESIDENT_KEYWORD = "физичко лице"
 def straightenImage(img_path : Path, dest_folder : Path) -> Path:
     data = np.fromfile(img_path, dtype=np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    
+    if image is None:
+        return Path()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, 50, 150, apertureSize=3)
     lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=10)
@@ -182,35 +183,6 @@ def get_table_content(img_path : Path, file_basename : str) -> str:
     doc = raw_img_to_pdf(img_save_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
     return extract_content_from_page(doc[0])
 
-def get_date(file_content : str) -> str:
-    date_string = ""
-    for date_format in hc.DATE_REGEXES:
-        match = re.search(date_format, file_content, re.DOTALL)
-        # print(f"{match=}")
-        if match:
-            date_string = match.group(0).strip()
-            break
-    if ',' in date_string:
-        date_string = date_string.replace(',', '.')
-    if '-' in date_string:
-        date_string = date_string.replace('-', '.')
-    return date_string
-
-def get_number(digit_cnt_low : int, digit_cnt_high : int, content : str) -> str:
-    expressions = [
-        "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\s",
-        "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\.\\s",
-        "\\s\\d{" + str(digit_cnt_low) + "," + str(digit_cnt_high) + "}\\,\\s",
-    ]
-    # print(f"{expression=}")
-    for expression in expressions:
-        match = re.search(expression, content, re.DOTALL)
-        # print(f"CONTENT TO MATCH: {content}")
-        if match:
-            # print(f"Number match: {match}")
-            return match.group(0).strip().replace('.', '').replace(',', '')
-    return ""
-
 def get_ocr_version_of_key_phrase(phrase : str, content : str) -> str:
     words = content.split()
     kw_len = len(phrase.split())
@@ -264,26 +236,27 @@ def find_info_with_regex(relevant_info : str, content : str, document_regexes : 
         return get_regex_match(reg, content)
     return ""
 
-#USED FOR OCR (FOR NOW)
-def extract_ocr_data(img_path : Path, doc : pymupdf.Document, doc_type : hc.DocType, file_basename : str) -> dict:
-    document_regexes = hc.OCR_DOCUMENT_REGEXES.get(doc_type, None)
-    if not document_regexes:
-        print("No defined regexes for this document type")
-        return {}
-    result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
-    # print(f"{CONFIG.get(doc_type, {}).get("has_checkbox")=}")
-    document_content = extract_content_from_page(doc[0])
-    # print(f"{document_content=}")
-    if hc.CONFIG.get(doc_type, {}).get("has_checkbox"):
-        checkbox_content = get_checkbox_content(img_path, plot=False)
-        result[hc.RESIDENT_CUSTOMER_STRING] = checkbox_content.get(hc.RESIDENT_CUSTOMER_STRING)
-        result[hc.BUSINESS_CUSTOMER_STRING] = checkbox_content.get(hc.BUSINESS_CUSTOMER_STRING)
-        # print(f"{checkbox_content=}")
-    else:
-        #ONLY TYPE_2 AND TYPE_4 DON'T HAVE CHECKBOXES
-        customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content[:int(len(document_content) * 0.2)], 
-                                                            document_regexes, modify_regex=True)
-        if (doc_type == hc.DocType.TYPE_2):
+def update_ban_emdb_date(result : dict[str, str], document_content : str, document_regexes : dict, table_content = "", modify_regex = False) -> None:
+    date_string = find_info_with_regex(hc.CONTRACT_DATE_STRING, document_content, document_regexes)
+    if '-' in date_string:
+        date_string = date_string.replace('-', '.')
+    if ',' in date_string:
+        date_string = date_string.replace(',', '.')
+    result[hc.CONTRACT_DATE_STRING] = date_string
+    result[hc.BAN_STRING] = find_info_with_regex(hc.BAN_STRING, document_content, document_regexes, modify_regex)
+    result[hc.EMBG_EDB_STRING] = find_info_with_regex(hc.EMBG_EDB_STRING, table_content, document_regexes, modify_regex)
+    return
+
+def checkbox_fallback(page : pymupdf.Page, doc_type : hc.DocType) -> dict:
+    img_path = extract_img_from_pdf_page(page, f"doc_type_{doc_type}_temp_checkbox.png")
+    return get_checkbox_content(img_path, plot=False)
+
+def update_customer_type(doc : pymupdf.Document, result : dict, document_content : str, doc_type : hc.DocType, 
+                         document_regexes : dict, img_path : Path = Path(), use_ocr : bool = False) -> None:
+    match doc_type:
+        case hc.DocType.TYPE_2:
+            customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content[:int(len(document_content) * 0.2)], 
+                                                            document_regexes, modify_regex=use_ocr)
             resident_score = fuzz.ratio(customer_type_matched_string, document_regexes.get(hc.RESIDENT_CUSTOMER_STRING, ""))
             business_score = fuzz.ratio(customer_type_matched_string, document_regexes.get(hc.BUSINESS_CUSTOMER_STRING, ""))
             is_resident = False
@@ -296,96 +269,70 @@ def extract_ocr_data(img_path : Path, doc : pymupdf.Document, doc_type : hc.DocT
                 is_business = True
             result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
             result[hc.BUSINESS_CUSTOMER_STRING] = is_business
-            # print(f"{resident_score=}, {business_score=}")
-        else:
-            # print("HERE")
-            for reg in document_regexes.get(hc.CUSTOMER_TYPE_STRING, []):
-                # reg_expr = customize_regex(hc.CUSTOMER_TYPE_STRING, document_content[:int(len(document_content) * 0.2)], document_regexes)
-                matched_string = get_regex_match(reg, document_content)
-                if matched_string:
-                    print(f"in customer type: {matched_string=}")
-    table_content = ""
-    if hc.CONFIG.get(doc_type, {}).get("has_table_bounds"):
-        table_content = get_table_content(img_path, file_basename)
-        # print(f"{table_content=}")
-    else:
-        table_content = document_content
-    result[hc.CONTRACT_DATE_STRING] = get_date(document_content)
-    ban_matched_string = find_info_with_regex(hc.BAN_STRING, document_content, document_regexes, modify_regex=True)
-    result[hc.BAN_STRING] = ban_matched_string
-    emdg_edb_matched_string = find_info_with_regex(hc.EMBG_EDB_STRING, table_content, document_regexes, modify_regex=True)
-
-    result[hc.EMBG_EDB_STRING] = emdg_edb_matched_string
-    return result
-
-def checkbox_fallback(page : pymupdf.Page, doc_type : hc.DocType) -> dict:
-    img_path = extract_img_from_pdf_page(page, f"doc_type_{doc_type}_temp_checkbox.png")
-    return get_checkbox_content(img_path, plot=False)
-
-#USED FOR REGULAR PDF (FOR NOW)
-def extract_data(doc : pymupdf.Document, doc_type : hc.DocType) -> dict:
-    document_regexes = hc.DOCUMENT_REGEXES.get(doc_type, None)
-    if not document_regexes:
-        print("Unable to find document regexes")
-        return {}
-    content = extract_content_from_page(doc[0])
-    # print(f"{content=}")
-    result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
-    date_matched_string = find_info_with_regex(hc.CONTRACT_DATE_STRING, content, document_regexes)
-    if date_matched_string:
-        result[hc.CONTRACT_DATE_STRING] = date_matched_string
-    ban_matched_string = find_info_with_regex(hc.BAN_STRING, content, document_regexes)
-    if ban_matched_string:
-        result[hc.BAN_STRING] = ban_matched_string
-    embg_edb_matched_string = find_info_with_regex(hc.EMBG_EDB_STRING, content, document_regexes)
-    if embg_edb_matched_string:
-        result[hc.EMBG_EDB_STRING] = embg_edb_matched_string
-    
-    if doc_type == hc.DocType.TYPE_4:
-        regexes = document_regexes.get(hc.CUSTOMER_TYPE_STRING, [])
-        if len(regexes) == 0:
-            print(f"No customer_type regexes defined for doc_type: {doc_type}")
-        else:
-            reg1 = regexes[0]
-            reg2 = regexes[1]
-            match1 = get_regex_match(reg1, content).strip()
-            match2 = get_regex_match(reg2, content).strip()
-
-            # print(f"{match1=}, {match2=}")
-            is_resident = False
-            is_business = False
-            if match1 and not match2:
-                is_resident = True
-                is_business = False
-            elif not match1 and match2:
+            return
+        case hc.DocType.TYPE_4:
+            regexes = document_regexes.get(hc.CUSTOMER_TYPE_STRING, [])
+            if len(regexes) == 0:
+                print(f"No customer_type regexes defined for doc_type: {doc_type}")
+            else:
+                reg1 = regexes[0]
+                reg2 = regexes[1]
+                match1 = get_regex_match(reg1, document_content).strip()
+                match2 = get_regex_match(reg2, document_content).strip()
+                # print(f"{match1=}, {match2=}")
                 is_resident = False
-                is_business = True
-            result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
-            result[hc.BUSINESS_CUSTOMER_STRING] = is_business
-
-    else:
-        customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, content, document_regexes)
-        if customer_type_matched_string:
-            matched_string = customer_type_matched_string.lower().strip()
-            # print(f"{matched_string=}")
-            is_resident = False
-            possible_check_marks = [chr(0x455), chr(0x78), chr(0x2713), chr(0x2714), chr(0x1F5F8), chr(0x2611), chr(0x1F5F9), chr(0x10102)]
-            all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
-            # print(f"{all_mark_positions=}")
-            if all(var == -1 for var in all_mark_positions):
-                # print("GOING FOR FALLBACK")
-                checkbox_result = checkbox_fallback(doc[0], doc_type)
-                # print(f"{checkbox_result=}")
+                is_business = False
+                if match1 and not match2:
+                    is_resident = True
+                    is_business = False
+                elif not match1 and match2:
+                    is_resident = False
+                    is_business = True
+                result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
+                result[hc.BUSINESS_CUSTOMER_STRING] = is_business
+                return
+        case _:
+            # print("HERE")
+            customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content, document_regexes, modify_regex=use_ocr)
+            # print(f"{customer_type_matched_string=}")
+            if customer_type_matched_string:
+                matched_string = customer_type_matched_string.lower().strip()
+                is_resident = False
+                possible_check_marks = [chr(0x455), chr(0x78), chr(0x2713), chr(0x2714), chr(0x1F5F8), chr(0x2611), chr(0x1F5F9), chr(0x10102)]
+                all_mark_positions = [matched_string.find(possible_check_marks[i]) for i in range(len(possible_check_marks))]
+                # print(f"{all_mark_positions=}")
+                if all(var == -1 for var in all_mark_positions):
+                    pass
+                else:
+                    is_resident = any(var == 0 for var in all_mark_positions)
+                    result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
+                    result[hc.BUSINESS_CUSTOMER_STRING] = not is_resident
+            if not customer_type_matched_string or result.get(hc.RESIDENT_CUSTOMER_STRING) is None:
+                #in case that you need to scan checkboxes, use corrected image, instead of extracting the one from the document
+                checkbox_result = checkbox_fallback(doc[0], doc_type) if not use_ocr else get_checkbox_content(img_path, plot=False)
                 if not checkbox_result:
-                    # raise ValueError("Unable to detect checked box")
-                    print("UNABLE TO DETECT CHECKBOXES")            
+                        # raise ValueError("Unable to detect checked box")
+                        print("UNABLE TO DETECT CHECKBOXES")            
                 else:
                     result[hc.RESIDENT_CUSTOMER_STRING] = checkbox_result.get(hc.RESIDENT_CUSTOMER_STRING)
                     result[hc.BUSINESS_CUSTOMER_STRING] = checkbox_result.get(hc.BUSINESS_CUSTOMER_STRING)
-            else:
-                is_resident = any(var == 0 for var in all_mark_positions)
-                result[hc.RESIDENT_CUSTOMER_STRING] = is_resident
-                result[hc.BUSINESS_CUSTOMER_STRING] = not is_resident
+                return
+    return
+
+def extract_document_data(doc : pymupdf.Document, doc_type : hc.DocType, file_basename = "", img_path : Path = Path(), use_ocr : bool = False) -> dict:
+    document_regexes = hc.DOCUMENT_REGEXES.get(doc_type, None) if not use_ocr else hc.OCR_DOCUMENT_REGEXES.get(doc_type, None)
+    if not document_regexes:
+        print(f"No defined regexes for document type {doc_type}")
+        return {}
+    result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
+    document_content = extract_content_from_page(doc[0])
+    table_content = ""
+    if hc.CONFIG.get(doc_type, {}).get("has_table_bounds") and use_ocr:
+        table_content = get_table_content(img_path, file_basename)
+    else:
+        table_content = document_content
+    update_customer_type(doc, result, document_content, doc_type, document_regexes, img_path=img_path, use_ocr=use_ocr)
+    update_ban_emdb_date(result, document_content, document_regexes, table_content=table_content, modify_regex=use_ocr)
     return result
 
 
@@ -512,28 +459,32 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_2"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
     # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4"
     i = 0
     for x in root_folder_path_obj.iterdir():
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
-            doc_type = hc.DocType.TYPE_2
+            doc_type = hc.DocType.TYPE_3
             doc = pymupdf.open(Path(root_folder_path_obj / x.name))
             result = None
             name = f"document_{i}"
-            if not is_regular_pdf_page(doc[0]):
+            rotated_path = Path()
+            use_ocr = not is_regular_pdf_page(doc[0])
+            if use_ocr:
                 img_path = extract_img_from_pdf_page(doc[0], name, preprocess=False)
                 # print(f"Returned path: {str(img_path)}")
                 # img = image = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), cv2.IMREAD_COLOR)
                 # cv2.imwrite(str(Path(__file__).parent / f"rotated_imgs/document_{i}/rotated.png"), img)
                 rotated_path = straightenImage(img_path, Path(__file__).parent / f"rotated_imgs/document_{i}")
                 doc = scanned_img_to_pdf(doc[0], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
-                result = extract_ocr_data(rotated_path, doc, doc_type, name) 
+                # result = extract_ocr_data(rotated_path, doc, doc_type, name) 
                 # result = extract_ocr_data(img_path, doc, doc_type, name) 
             else:
-                result = extract_data(doc, doc_type)
+                # result = extract_data(doc, doc_type)
+                pass
+            result = extract_document_data(doc, doc_type, file_basename=name, img_path=rotated_path, use_ocr=use_ocr)
             if not doc:
                 raise RuntimeError("Unable to read document!")
             print(f"\n{result=}\n")
