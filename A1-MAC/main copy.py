@@ -440,7 +440,6 @@ def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str, preprocess :
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     """
     Checks whether page is computer generated pdf or scanned document
-    
     :param page: Description
     :type page: pymupdf.Page
     :return: Description
