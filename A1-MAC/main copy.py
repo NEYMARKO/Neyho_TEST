@@ -335,7 +335,6 @@ def extract_document_data(doc : pymupdf.Document, doc_type : hc.DocType, file_ba
     update_ban_emdb_date(result, document_content, document_regexes, table_content=table_content, modify_regex=use_ocr)
     return result
 
-
 def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str, preprocess : bool = False) -> Path:
     """
     Extracts and saves image contained in pdf page and saves them in <root>/extracted_imgs folder
