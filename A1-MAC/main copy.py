@@ -384,7 +384,6 @@ def extract_document_data(page : pymupdf.Page, doc_type : hc.DocType, file_basen
     update_ban_emdb_date(result, document_content, document_regexes, table_content=table_content, modify_regex=use_ocr)
     return result
 
-
 def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str, preprocess : bool = False) -> Path:
     """
     Extracts and saves image contained in pdf page and saves them in <root>/extracted_imgs folder
@@ -489,7 +488,6 @@ def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str, preprocess :
 def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     """
     Checks whether page is computer generated pdf or scanned document
-    
     :param page: Description
     :type page: pymupdf.Page
     :return: Description
