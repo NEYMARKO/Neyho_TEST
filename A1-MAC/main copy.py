@@ -25,19 +25,20 @@ def map_title_to_doctype(content : str, is_scanned : bool = False) -> hc.DocType
     doc_type = hc.DocType.UNDEFINED
     # print(f"\n{content=}")
     all_titles = ["Договор за засновање претплатнички однос за користење на јавни електронски комуникациски услуги",
-                      "Договор за купопродажба на уреди со одложено плаќање на рати",
+                      "ДОГОВОР бр. 523670020 А за купопродажба на уреди со одложено плаќање на рати склучен", #added more than just a title to increase odds of it being detected
                       "ПРИЛОГ 1 кон Договор за користење на јавни комуникациски услуги",
                       "Формулар за доделена субвенција за бенефицирана набавка на терминална опрема",
                       "БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК"]
+    max_ratio = 0
     if is_scanned:
         max_ratio = 0
         for t in all_titles:
             matched_phrase = get_ocr_version_of_key_phrase(t, content, clear_strings=True)
             
             current_ratio = fuzz.ratio(matched_phrase, t.lower())
-            # print(f"MATCHED PHRASE:\n\t'{matched_phrase}'\nwith TITLE:\n\\t{t}")
+            # print(f"\nMATCHED PHRASE:\n\t'{matched_phrase}'\nwith TITLE:\n\t'{t.lower()}'")
             # print(f"{current_ratio=}")
-            if current_ratio > 80 and current_ratio > max_ratio:
+            if current_ratio > 85 and current_ratio > max_ratio:
                 
                 max_ratio = current_ratio
                 title = t
@@ -51,6 +52,7 @@ def map_title_to_doctype(content : str, is_scanned : bool = False) -> hc.DocType
         doc_type = hc.DocType(all_titles.index(title) + 1)
     except ValueError:
         doc_type = hc.DocType.UNDEFINED
+    # print(f"{max_ratio}% convinced it is {doc_type}")
     return doc_type
 
 def straightenImage(img_path : Path, dest_folder : Path) -> Path:
@@ -211,12 +213,13 @@ def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool
     is_resident = pair[0][1]
     return {hc.RESIDENT_CUSTOMER_STRING : is_resident, hc.BUSINESS_CUSTOMER_STRING : not is_resident}
 
-def get_table_content(img_path : Path, file_basename : str) -> str:
+def get_table_content(img_path : Path, file_basename : str, doc_type : hc.DocType) -> str:
     # img_path = crop_page(page, doc_type, 'table')
     # print(f"{str(img_path)=}")
     tableExtractor = TableExtractor(img_path, file_basename)
     img_save_path = Path(__file__).parent / f"tables/{file_basename}/cleared_table.png"
-    tableExtractor.clear_table(img_save_path)
+    line_length = hc.OCR_DOCUMENT_REGEXES.get(doc_type, {}).get(hc.LINE_LENGTH_STRING, 10)
+    tableExtractor.clear_table(img_save_path, line_length)
     # result_img_path = tableExtractor.result_path if CONFIG.get(doc_type, {}).get("clear_table") else img_path 
     # doc = raw_img_to_pdf(result_img_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
     doc = raw_img_to_pdf(img_save_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
@@ -231,6 +234,8 @@ def get_ocr_version_of_key_phrase(phrase : str, content : str, clear_strings : b
         content = re.sub(r"[^\w\s]", " ", content)
 
     words = content.split()
+    words = [x for x in words if len(x) > 1] #remove junk - not even once will word be consisted of only 1 letter or sign
+                                            # for example, this is junk:  е 3 е 3 и ти | } ПРИЛОГ (1st real word)
     ngrams = [" ".join(words[i:i+kw_len]) for i in range(len(words) - kw_len + 1)]
 
     # print(f"{phrase=}")
@@ -377,9 +382,10 @@ def extract_document_data(page : pymupdf.Page, doc_type : hc.DocType, file_basen
     # print(f"{document_content=}")
     table_content = ""
     if hc.CONFIG.get(doc_type, {}).get("has_table_bounds") and use_ocr:
-        table_content = get_table_content(img_path, file_basename)
+        table_content = get_table_content(img_path, file_basename, doc_type)
     else:
         table_content = document_content
+    # print(f"{table_content=}")
     update_customer_type(page, result, document_content, doc_type, document_regexes, img_path=img_path, use_ocr=use_ocr)
     update_ban_emdb_date(result, document_content, document_regexes, table_content=table_content, modify_regex=use_ocr)
     return result
@@ -506,7 +512,7 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
     # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4"
     file_no = 0
     valid_page_no = 0
@@ -540,7 +546,7 @@ def main():
                 if doc_type != hc.DocType.UNDEFINED:
                     page = doc[i]
                     valid_page_no = i
-                    print(f"PAGE {i + 1} is valid form of type: {doc_type}")
+                    # print(f"PAGE {i + 1} is valid form of type: {doc_type}")
                     break
             
             if not page:

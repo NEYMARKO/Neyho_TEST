@@ -31,8 +31,9 @@ class TableExtractor:
         cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
         return perspective_corrected_image
     
-    def clear_table(self, save_path : Path) -> None:
+    def clear_table(self, save_path : Path, line_length : int) -> None:
         self.save_path = save_path
+        self.line_length = line_length
         if not save_path.parent.exists() or not save_path.parent.is_dir():
             save_path.parent.mkdir(parents=True, exist_ok=True)
         # perspective_corrected_image = self.extract_table_with_fixed_perspective(save_path)
@@ -187,7 +188,7 @@ class TableExtractor:
         # Erode everything that isn't horizontal line of length 20px
         # Dilate result to make it thicker
         # Product are table horizontal bounds
-        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1))
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (self.line_length, 1))
         horizontal_lines = cv2.erode(inverted_image, horizontal_kernel, iterations=5)
         horizontal_lines = cv2.dilate(horizontal_lines, horizontal_kernel, iterations=10)
         # horizontal_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
@@ -195,7 +196,7 @@ class TableExtractor:
         # Erode everything that isn't vertical line of length 20px
         # Dilate result to make it thicker
         # Product are table vertical bounds
-        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
+        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1,self.line_length))
         vertical_lines = cv2.erode(inverted_image, vertical_kernel, iterations=5)
         vertical_lines = cv2.dilate(vertical_lines, vertical_kernel, iterations=10)
         # vertical_lines = cv2.morphologyEx(inverted_image, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
