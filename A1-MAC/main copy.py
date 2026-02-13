@@ -134,6 +134,7 @@ def scanned_img_to_pdf(pages : list[pymupdf.Page], dest_folder : Path, file_name
             dest_folder.mkdir(parents=True, exist_ok=True)
     doc_path = str(dest_folder / file_name)
     doc.save(doc_path)
+    doc.close()
     return pymupdf.open(str(doc_path))
 
 
@@ -261,6 +262,8 @@ def get_regex_match(regex : str, content : str) -> str:
 
 def find_info_with_regex(relevant_info : str, content : str, document_regexes : dict, modify_regex : bool = False) -> str:
     regex_expr = document_regexes.get(relevant_info, None)
+    # print(f"{regex_expr=}")
+    # print(f"{content=}")
     reg = ""
     if not regex_expr:
         return ""
@@ -290,14 +293,17 @@ def find_info_with_regex(relevant_info : str, content : str, document_regexes : 
     return ""
 
 def update_ban_emdb_date(result : dict[str, str], document_content : str, document_regexes : dict, table_content = "", modify_regex = False) -> None:
-    date_string = find_info_with_regex(hc.CONTRACT_DATE_STRING, document_content, document_regexes)
-    if '-' in date_string:
-        date_string = date_string.replace('-', '.')
-    if ',' in date_string:
-        date_string = date_string.replace(',', '.')
-    result[hc.CONTRACT_DATE_STRING] = date_string
-    result[hc.BAN_STRING] = find_info_with_regex(hc.BAN_STRING, document_content, document_regexes, modify_regex)
-    result[hc.EMBG_EDB_STRING] = find_info_with_regex(hc.EMBG_EDB_STRING, table_content, document_regexes, modify_regex)
+    if not result.get(hc.CONTRACT_DATE_STRING):
+        date_string = find_info_with_regex(hc.CONTRACT_DATE_STRING, document_content, document_regexes)
+        if '-' in date_string:
+            date_string = date_string.replace('-', '.')
+        if ',' in date_string:
+            date_string = date_string.replace(',', '.')
+        result[hc.CONTRACT_DATE_STRING] = date_string
+    if not result.get(hc.BAN_STRING):
+        result[hc.BAN_STRING] = find_info_with_regex(hc.BAN_STRING, document_content, document_regexes, modify_regex)
+    if not result.get(hc.EMBG_EDB_STRING):
+        result[hc.EMBG_EDB_STRING] = find_info_with_regex(hc.EMBG_EDB_STRING, table_content, document_regexes, modify_regex)
     return
 
 def checkbox_fallback(page : pymupdf.Page, doc_type : hc.DocType) -> dict:
@@ -347,7 +353,7 @@ def update_customer_type(page : pymupdf.Page, result : dict, document_content : 
         case _:
             # print("HERE")
             customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content, document_regexes, modify_regex=use_ocr)
-            # print(f"{customer_type_matched_string=}")
+            print(f"{customer_type_matched_string=}")
             if customer_type_matched_string:
                 matched_string = customer_type_matched_string.lower().strip()
                 is_resident = False
@@ -372,12 +378,11 @@ def update_customer_type(page : pymupdf.Page, result : dict, document_content : 
                 return
     return
 
-def extract_document_data(page : pymupdf.Page, doc_type : hc.DocType, file_basename = "", img_path : Path = Path(), use_ocr : bool = False) -> dict:
+def extract_document_data(page : pymupdf.Page, doc_type : hc.DocType, result : dict, file_basename = "", img_path : Path = Path(), use_ocr : bool = False) -> None:
     document_regexes = hc.DOCUMENT_REGEXES.get(doc_type, None) if not use_ocr else hc.OCR_DOCUMENT_REGEXES.get(doc_type, None)
     if not document_regexes:
         print(f"No defined regexes for document type {doc_type}")
-        return {}
-    result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
+        return
     document_content = extract_content_from_page(page)
     # print(f"{document_content=}")
     table_content = ""
@@ -386,9 +391,10 @@ def extract_document_data(page : pymupdf.Page, doc_type : hc.DocType, file_basen
     else:
         table_content = document_content
     # print(f"{table_content=}")
-    update_customer_type(page, result, document_content, doc_type, document_regexes, img_path=img_path, use_ocr=use_ocr)
+    if result.get(hc.RESIDENT_CUSTOMER_STRING) is None or result.get(hc.CUSTOMER_TYPE_STRING) is None:
+        update_customer_type(page, result, document_content, doc_type, document_regexes, img_path=img_path, use_ocr=use_ocr)
     update_ban_emdb_date(result, document_content, document_regexes, table_content=table_content, modify_regex=use_ocr)
-    return result
+    return 
 
 def extract_img_from_pdf_page(page : pymupdf.Page, file_name : str, preprocess : bool = False) -> Path:
     """
@@ -511,18 +517,29 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     # print(f"{image_blocks=}")
     return text_blocks > 0
 
+def result_complete(result : dict) -> bool:
+    print("CHECKING RESULT")
+    if not result:
+        return False
+    if all((
+        result.get(hc.CONTRACT_DATE_STRING), result.get(hc.BAN_STRING), result.get(hc.EMBG_EDB_STRING)
+        )) and result.get(hc.RESIDENT_CUSTOMER_STRING) is not None and result.get(hc.BUSINESS_CUSTOMER_STRING) is not None:
+        print("CONDITION IS MET")
+        return True 
+    return False
+
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_3"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/DEBUG/try"
     # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4"
     file_no = 0
-    valid_page_no = 0
     for x in root_folder_path_obj.iterdir():
+        valid_pages = {}
         if x.is_file() and x.name.endswith("pdf"):
             print(f"{"-" * 40}Processing file: {x.stem}{"-" * 40}")
             # doc_type = DOC_NAME_TO_TYPE_MAP.get(file_basename, DocType.UNDEFINED)
             doc_type = hc.DocType.TYPE_4
             doc = pymupdf.open(Path(root_folder_path_obj / x.name))
-            result = None
+            result = {}
             name = f"document_{file_no}"
             rotated_path = Path()
             use_ocr = not is_regular_pdf_page(doc[0])
@@ -545,31 +562,44 @@ def main():
                 doc_type = map_title_to_doctype(page_content[:int(len(page_content) * 0.1)], use_ocr)
                 if doc_type != hc.DocType.UNDEFINED:
                     page = doc[i]
-                    valid_page_no = i
+                    # valid_page_no = i
+                    valid_pages[i] = doc_type
                     # print(f"PAGE {i + 1} is valid form of type: {doc_type}")
-                    break
             
             if not page:
                 print("No relevant pages detected for given document")
                 continue
-                
-            if use_ocr:
-                img_path = extract_img_from_pdf_page(doc[valid_page_no], name, preprocess=False)
-                # print(f"Returned path: {str(img_path)}")
-                # img = image = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), cv2.IMREAD_COLOR)
-                # cv2.imwrite(str(Path(__file__).parent / f"rotated_imgs/document_{i}/rotated.png"), img)
-                rotated_path = straightenImage(img_path, Path(__file__).parent / f"rotated_imgs/document_{file_no}")
-                doc = scanned_img_to_pdf([doc[valid_page_no]], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
-                # doc = scanned_img_to_pdf(list(doc.pages()), Path(__file__).parent / "scanned_img_to_pdf" / name, "scanned_img.pdf")
-                # result = extract_ocr_data(rotated_path, doc, doc_type, name) 
-                # result = extract_ocr_data(img_path, doc, doc_type, name) 
-                page = doc[0]
-            else:
-                # result = extract_data(doc, doc_type)
-                pass
             
-            result = extract_document_data(page, doc_type, file_basename=name, img_path=rotated_path, use_ocr=use_ocr)
-            print(f"\n{result=}\n")
+            doc_trimmed = None
+            current_page_no = 0
+            result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
+            print(f"{valid_pages=}")
+            while current_page_no < len(valid_pages) and result_complete(result) == False:
+                valid_page_no = list(valid_pages.keys())[current_page_no]
+                doc_type = valid_pages[valid_page_no]
+                # print(f"{valid_page_no=}, {doc_type=}")
+                if use_ocr:
+                    if doc_trimmed:
+                        doc_trimmed.close()
+                    img_path = extract_img_from_pdf_page(doc[valid_page_no], name, preprocess=False)
+                    # print(f"Returned path: {str(img_path)}")
+                    # img = image = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    # cv2.imwrite(str(Path(__file__).parent / f"rotated_imgs/document_{i}/rotated.png"), img)
+                    rotated_path = straightenImage(img_path, Path(__file__).parent / f"rotated_imgs/document_{file_no}")
+                    # doc_save_path = Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name / "scanned_img.pdf"
+                    # print(f"{str(doc_save_path)=}")
+                    doc_trimmed = scanned_img_to_pdf([doc[valid_page_no]], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
+                    # doc = scanned_img_to_pdf(list(doc.pages()), Path(__file__).parent / "scanned_img_to_pdf" / name, "scanned_img.pdf")
+                    # result = extract_ocr_data(rotated_path, doc, doc_type, name) 
+                    # result = extract_ocr_data(img_path, doc, doc_type, name) 
+                    page = doc_trimmed[0]
+                else:
+                    # result = extract_data(doc, doc_type)
+                    pass
+                
+                extract_document_data(page, doc_type, result, file_basename=name, img_path=rotated_path, use_ocr=use_ocr)
+                print(f"\n{result=}\n")
+                current_page_no += 1
             file_no += 1
     return
 
