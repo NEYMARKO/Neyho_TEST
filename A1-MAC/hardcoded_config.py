@@ -42,7 +42,7 @@ OCR_DOCUMENT_REGEXES = {
         CUSTOMER_TYPE_STRING: "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
         EMBG_EDB_STRING: [
             {
-                PRECEDING_STRING: r"ЕМБГ:",
+                PRECEDING_STRING: "",
                 UNCHANGED_STRING: 
                     r"\s(\d{13}|\d{7})"
             },
@@ -51,10 +51,6 @@ OCR_DOCUMENT_REGEXES = {
                 UNCHANGED_STRING: 
                     r"\s(\d{13}|\d{7})"
             },
-            {
-                PRECEDING_STRING: "",
-                UNCHANGED_STRING: r"\s(\d{13}|\d{7})"
-            }
         ],
         LINE_LENGTH_STRING: 15
     },
@@ -88,7 +84,7 @@ OCR_DOCUMENT_REGEXES = {
         CUSTOMER_TYPE_STRING: "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
         EMBG_EDB_STRING: [
             {
-                PRECEDING_STRING: r"ЕМБГ:",
+                PRECEDING_STRING: "",
                 UNCHANGED_STRING: 
                     r"\s(\d{13}|\d{7})"
             },
@@ -97,10 +93,6 @@ OCR_DOCUMENT_REGEXES = {
                 UNCHANGED_STRING: 
                     r"\s(\d{13}|\d{7})"
             },
-            {
-                PRECEDING_STRING: "",
-                UNCHANGED_STRING: r"\s(\d{13}|\d{7})"
-            }
         ],
         LINE_LENGTH_STRING: 5
     },

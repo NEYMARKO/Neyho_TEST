@@ -38,7 +38,7 @@ def map_title_to_doctype(content : str, is_scanned : bool = False) -> hc.DocType
             current_ratio = fuzz.ratio(matched_phrase, t.lower())
             # print(f"\nMATCHED PHRASE:\n\t'{matched_phrase}'\nwith TITLE:\n\t'{t.lower()}'")
             # print(f"{current_ratio=}")
-            if current_ratio > 85 and current_ratio > max_ratio:
+            if current_ratio >= 80 and current_ratio > max_ratio:
                 
                 max_ratio = current_ratio
                 title = t
@@ -270,9 +270,11 @@ def find_info_with_regex(relevant_info : str, content : str, document_regexes : 
     if isinstance(regex_expr, list):
         for reg in regex_expr:
             if modify_regex:
+                # print(f"OLD REG: {reg}")
                 reg = customize_regex(content, reg)
                 # print(f"MODIFIED REGEX: {reg}")
-            # matched_string = re.search(reg, content, re.DOTALL)
+            matched_string = re.search(reg, content, re.DOTALL)
+            # print(f"matched string {matched_string} with regex {reg} for content: {content}")
             # print(f"customized regex: {reg}")
             matched_string = get_regex_match(reg, content)
             if matched_string:
@@ -353,7 +355,7 @@ def update_customer_type(page : pymupdf.Page, result : dict, document_content : 
         case _:
             # print("HERE")
             customer_type_matched_string = find_info_with_regex(hc.CUSTOMER_TYPE_STRING, document_content, document_regexes, modify_regex=use_ocr)
-            print(f"{customer_type_matched_string=}")
+            # print(f"{customer_type_matched_string=}")
             if customer_type_matched_string:
                 matched_string = customer_type_matched_string.lower().strip()
                 is_resident = False
@@ -391,6 +393,7 @@ def extract_document_data(page : pymupdf.Page, doc_type : hc.DocType, result : d
     else:
         table_content = document_content
     # print(f"{table_content=}")
+    #CUSTOMER TYPE HAS NOT YET BEEN DETERMINED
     if result.get(hc.RESIDENT_CUSTOMER_STRING) is None or result.get(hc.CUSTOMER_TYPE_STRING) is None:
         update_customer_type(page, result, document_content, doc_type, document_regexes, img_path=img_path, use_ocr=use_ocr)
     update_ban_emdb_date(result, document_content, document_regexes, table_content=table_content, modify_regex=use_ocr)
@@ -518,18 +521,18 @@ def is_regular_pdf_page(page : pymupdf.Page) -> bool:
     return text_blocks > 0
 
 def result_complete(result : dict) -> bool:
-    print("CHECKING RESULT")
+    # print("CHECKING RESULT")
     if not result:
         return False
     if all((
         result.get(hc.CONTRACT_DATE_STRING), result.get(hc.BAN_STRING), result.get(hc.EMBG_EDB_STRING)
         )) and result.get(hc.RESIDENT_CUSTOMER_STRING) is not None and result.get(hc.BUSINESS_CUSTOMER_STRING) is not None:
-        print("CONDITION IS MET")
+        # print("CONDITION IS MET")
         return True 
     return False
 
 def main():
-    root_folder_path_obj = Path(__file__).parent / "INPUT/DEBUG/try"
+    root_folder_path_obj = Path(__file__).parent / "INPUT/DEBUG"
     # root_folder_path_obj = Path(__file__).parent / "INPUT/TYPE_4"
     file_no = 0
     for x in root_folder_path_obj.iterdir():
@@ -573,7 +576,7 @@ def main():
             doc_trimmed = None
             current_page_no = 0
             result = {hc.CONTRACT_DATE_STRING: "", hc.BAN_STRING: "", hc.EMBG_EDB_STRING: "", hc.RESIDENT_CUSTOMER_STRING: None, hc.BUSINESS_CUSTOMER_STRING: None}
-            print(f"{valid_pages=}")
+            # print(f"{valid_pages=}")
             while current_page_no < len(valid_pages) and result_complete(result) == False:
                 valid_page_no = list(valid_pages.keys())[current_page_no]
                 # print(f"{valid_page_no=}")
