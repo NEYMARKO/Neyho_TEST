@@ -17,6 +17,8 @@ RESIDENT_CUSTOMER_STRING = "customer_type_resident"
 BUSINESS_CUSTOMER_STRING = "customer_type_business"
 PRECEDING_STRING = "preceding"
 UNCHANGED_STRING = "unchanged"
+LINE_LENGTH_STRING = "line_length"
+
 def generate_all_date_regex_combinations() -> list[tuple[str]]:
     denumerators = [".", ",", "-"]
     size = 2
@@ -49,7 +51,12 @@ OCR_DOCUMENT_REGEXES = {
                 UNCHANGED_STRING: 
                     r"\s(\d{13}|\d{7})"
             },
-        ]
+            {
+                PRECEDING_STRING: "",
+                UNCHANGED_STRING: r"\s(\d{13}|\d{7})"
+            }
+        ],
+        LINE_LENGTH_STRING: 15
     },
     DocType.TYPE_2: 
     {
@@ -90,7 +97,12 @@ OCR_DOCUMENT_REGEXES = {
                 UNCHANGED_STRING: 
                     r"\s(\d{13}|\d{7})"
             },
-        ]
+            {
+                PRECEDING_STRING: "",
+                UNCHANGED_STRING: r"\s(\d{13}|\d{7})"
+            }
+        ],
+        LINE_LENGTH_STRING: 5
     },
     DocType.TYPE_4: 
     {
