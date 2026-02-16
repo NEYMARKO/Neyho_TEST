@@ -531,8 +531,9 @@ def result_complete(result : dict) -> bool:
         return True 
     return False
 
-def extract_data(file_path : Path, file_no : int) -> dict:
+def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
     result = {}
+    use_ocr = False
     valid_pages = {}
     if file_path.is_file() and file_path.name.endswith("pdf"):
         print(f"{"-" * 40}Processing file: {file_path.stem}{"-" * 40}")
@@ -547,7 +548,7 @@ def extract_data(file_path : Path, file_no : int) -> dict:
 
         if not doc:
             print("Unable to read document!")
-            return {}
+            return ({}, '')
         
         ocr_doc = None
         if use_ocr:
@@ -568,7 +569,7 @@ def extract_data(file_path : Path, file_no : int) -> dict:
         
         if not page:
             print("No relevant pages detected for given document")
-            return {}
+            return ({}, '')
         
         doc_trimmed = None
         current_page_no = 0
@@ -601,4 +602,4 @@ def extract_data(file_path : Path, file_no : int) -> dict:
             extract_document_data(page, doc_type, result, file_basename=name, img_path=rotated_path, use_ocr=use_ocr)
             # print(f"\n{result=}\n")
             current_page_no += 1
-    return result
+    return (result, 'A' if not use_ocr else 'B')
