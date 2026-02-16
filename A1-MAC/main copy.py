@@ -557,7 +557,7 @@ def main():
             #     print(f"{extract_content_from_page(p)=}")
             for i in range(doc.page_count):
                 page_content = extract_content_from_page(doc[i] if not ocr_doc else ocr_doc[i])
-                # print(f"{page_content=}")
+                # print(f"{page_content=}\n\n\n\n")
                 # doc_type = map_title_to_doctype(page_content, use_ocr)
                 doc_type = map_title_to_doctype(page_content[:int(len(page_content) * 0.1)], use_ocr)
                 if doc_type != hc.DocType.UNDEFINED:
@@ -576,6 +576,7 @@ def main():
             print(f"{valid_pages=}")
             while current_page_no < len(valid_pages) and result_complete(result) == False:
                 valid_page_no = list(valid_pages.keys())[current_page_no]
+                # print(f"{valid_page_no=}")
                 doc_type = valid_pages[valid_page_no]
                 # print(f"{valid_page_no=}, {doc_type=}")
                 if use_ocr:
@@ -595,7 +596,7 @@ def main():
                     page = doc_trimmed[0]
                 else:
                     # result = extract_data(doc, doc_type)
-                    pass
+                    page = doc[valid_page_no]
                 
                 extract_document_data(page, doc_type, result, file_basename=name, img_path=rotated_path, use_ocr=use_ocr)
                 print(f"\n{result=}\n")
