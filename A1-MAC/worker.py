@@ -37,7 +37,10 @@ def create_backup_dir(root_dir : Path, date_tuple : tuple[int, int, int], level 
 
 def move_file(output_dir_path : Path, file_path : Path) -> None:
     file_name = file_path.name
-    file_path.rename(output_dir_path / file_name)
+    try:
+        file_path.rename(output_dir_path / file_name)
+    except FileExistsError:
+        print(f"file {file_name} already exists")
     return
 
 def move_files(output_dir_path : Path, input_files : list[Path]) -> Path:
@@ -112,6 +115,11 @@ def append_data_to_excel(data : dict, excel_file_path : Path) -> None:
             startrow = sheet.max_row  # find last used row
             data[TICKET_NUMBER_STRING] = startrow
             new_row = pd.DataFrame([data])
+
+            headers = [cell.value.strip() for cell in sheet[1]]
+            print(f"{headers=}")
+            new_row = new_row.reindex(columns=headers) #reorder data to match corresponding column
+
             new_row.to_excel(
                 writer,
                 sheet_name="Sheet1",
@@ -150,6 +158,7 @@ def main():
             rename_all_zip_files(list(zip_dir_path.iterdir()), extracted.get(hc.BAN_STRING, ""))
             move_files(filenet_temp_path, list(zip_dir_path.iterdir()))
             zip_dir_path.rmdir()
+            x.unlink()
         elif x.is_file() and x.name.endswith("pdf"):
         # print(f"\n{str(x)=}\n")
             extracted = save_data(x, file_no, results)
