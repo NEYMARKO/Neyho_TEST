@@ -175,7 +175,7 @@ def main():
                 CONTRACT_DATE_STRING: extracted.get(hc.CONTRACT_DATE_STRING), 
                 CUSTOMER_TYPE_STRING: "RESIDENT" if extracted.get(hc.RESIDENT_CUSTOMER_STRING) else "BUSINESS",
                 EMBG_EDB_STRING: extracted.get(hc.EMBG_EDB_STRING),
-                DOCUMENT_ENTRY_DATE_STRING: datetime.now().strftime('%Y-%m-%d'),
+                DOCUMENT_ENTRY_DATE_STRING: datetime.now().strftime('%m/%d/%Y'),
                 FILE_LOCATION_STRING: "SOME_FOLDER",
                 STATUS_UPLOADED_STRING: "YES",
                 STATUS_CHECKED_STRING: "YES",

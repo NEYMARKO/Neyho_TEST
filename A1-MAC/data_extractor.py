@@ -301,6 +301,11 @@ def update_ban_emdb_date(result : dict[str, str], document_content : str, docume
             date_string = date_string.replace('-', '.')
         if ',' in date_string:
             date_string = date_string.replace(',', '.')
+        split_date = date_string.split('.')
+        month = split_date[1]
+        split_date[1] = split_date[0]
+        split_date[0] = month
+        date_string = "/".join(split_date) 
         result[hc.CONTRACT_DATE_STRING] = date_string
     if not result.get(hc.BAN_STRING):
         result[hc.BAN_STRING] = find_info_with_regex(hc.BAN_STRING, document_content, document_regexes, modify_regex)
