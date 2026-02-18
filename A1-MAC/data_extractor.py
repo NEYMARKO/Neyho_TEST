@@ -278,6 +278,8 @@ def get_ocr_version_of_key_phrase(phrase : str, content : str, clear_strings : b
     # print(f"{words=}")
     # print(f"{phrase=}")
     # print(f"\n{ngrams=}\n")
+    if not ngrams:
+        return ""
     match, score, idx = process.extractOne(phrase, ngrams, scorer=fuzz.token_set_ratio)
     # print(f"Matched: '{phrase}' with: '{match}' => score: {score}")
 

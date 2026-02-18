@@ -40,7 +40,15 @@ def move_file(output_dir_path : Path, file_path : Path) -> None:
     try:
         file_path.rename(output_dir_path / file_name)
     except FileExistsError:
-        print(f"file {file_name} already exists")
+        same_basename_files = [x.stem for x in list(output_dir_path.iterdir()) if file_path.stem in x.stem]
+        if len(same_basename_files) <= 1:
+            file_path.rename(output_dir_path / f"{file_path.stem}_1.pdf")
+        else:
+            same_basename_files.sort()
+            name_split = same_basename_files[-1].split("_")
+            base_name = name_split[0]
+            version = int(name_split[1])
+            file_path.rename(output_dir_path / f"{base_name}_{version+1}.pdf")
     return
 
 def move_files(output_dir_path : Path, input_files : list[Path]) -> Path:
@@ -61,7 +69,7 @@ def save_data(file_path : Path, file_no : int, results : list[dict]) -> dict:
     # processed_files.append(x.name)
     # extracted_data['flow'] = flow
     ban = extracted_data.get(hc.BAN_STRING)
-    file_path = file_path.rename(file_path.parent / f"{ban}.pdf" )
+    file_path = file_path.rename(file_path.parent / f"{ban}.pdf") #ban surely exists - result_complete() check comes before this line
     results.append(extracted_data)
     return extracted_data
 
@@ -72,20 +80,7 @@ def rename_all_zip_files(all_file_paths : list[Path], ban : str) -> None:
         all_file_paths[i].rename(all_file_paths[i].parent / f"{ban}_{i + 1}.pdf")
     return
 
-# def read_current_excel_content(excel_file_path : Path) -> pd.DataFrame:
-#     df = pd.DataFrame()
-#     with pd.ExcelFile(str(excel_file_path)) as xls_obj:
-#             df = pd.read_excel(xls_obj, na_values=["None", "null", "NULL", ""], 
-#                                nrows=10000, header=None, sheet_name=0)
-#     df = df.dropna(thresh=1)
-#     df.columns = df.iloc[0]
-#     df = df[1:]
-#     df = df.reset_index(drop=True)
-#     print(f"{df=}")
-#     return df
-
 def append_data_to_excel(data : dict, excel_file_path : Path) -> None:
-    # df = pd.concat([df, new_row], ignore_index=True)
     with pd.ExcelWriter(
         str(excel_file_path),
         engine="openpyxl",
@@ -99,7 +94,6 @@ def append_data_to_excel(data : dict, excel_file_path : Path) -> None:
             new_row = pd.DataFrame([data])
 
             headers = [cell.value.strip() for cell in sheet[1]]
-            # print(f"{headers=}")
             new_row = new_row.reindex(columns=headers) #reorder data to match corresponding column
 
             new_row.to_excel(
@@ -119,38 +113,36 @@ def main():
     if not filenet_temp_path.exists() or not filenet_temp_path.is_dir():
         filenet_temp_path.mkdir(parents=True, exist_ok=True)
     results = []
-    # df = read_current_excel_content(root_folder_path_obj / "../../EXCEL_TEMPLATE/Book1.xlsx")
     start = time()
-    for x in root_folder_path_obj.iterdir():
+    for file_path in root_folder_path_obj.iterdir():
         extracted = {}
-        # flow = ''
-        # print(f"{x.name=}")
-        if x.is_file() and x.name.endswith("zip"):
+        if file_path.is_file() and file_path.name.endswith("zip"):
             #ALL FILES WILL HAVE THE SAME BAN, IF DATA GOT EXTRACTED FROM SINGLE FILE
             #IT WILL BE APPLIABLE TO ALL THE REST OF THEM - NO NEED TO PROCESS THE REST
-            zip_dir_path = x.parent / "ZIP_EXTRACTED"
-            extracted = {}
-            with ZipFile(x, 'r') as zip:
+            zip_dir_path = file_path.parent / "ZIP_EXTRACTED"
+            with ZipFile(file_path, 'r') as zip:
                 zip.extractall(zip_dir_path)
-            for file_path in zip_dir_path.iterdir():
-                extracted = save_data(file_path, file_no, results)
+            for zip_elem_path in zip_dir_path.iterdir():
+                extracted = save_data(zip_elem_path, file_no, results)
                 if extracted:
                     break
                 file_no += 1
-            rename_all_zip_files(list(zip_dir_path.iterdir()), extracted.get(hc.BAN_STRING, ""))
-            move_files(filenet_temp_path, list(zip_dir_path.iterdir()))
-            zip_dir_path.rmdir()
-            x.unlink()
-        elif x.is_file() and x.name.endswith("pdf"):
-        # print(f"\n{str(x)=}\n")
-            extracted = save_data(x, file_no, results)
-            move_files(filenet_temp_path, [x.parent / f"{extracted.get(hc.BAN_STRING)}.pdf"])
-            # move_file(output_dir_path, x)
+            if extracted:
+                rename_all_zip_files(list(zip_dir_path.iterdir()), extracted.get(hc.BAN_STRING, ""))
+                move_files(filenet_temp_path, list(zip_dir_path.iterdir()))
+            zip_dir_path.rmdir() #remove folder in which zip files got extracted
+            file_path.unlink() #remove zip file
+        elif file_path.is_file() and file_path.name.endswith("pdf"):
+            extracted = save_data(file_path, file_no, results)
+            ban = extracted.get(hc.BAN_STRING)
+            if extracted:
+                move_files(filenet_temp_path, [file_path.parent / f"{ban}.pdf" if ban else file_path])
             print(f"\nresult={extracted}\n")
             file_no += 1
         else:
             continue
-        data = {
+        if extracted:
+            data = {
                 TICKET_NUMBER_STRING: 0,
                 BAN_STRING: extracted.get(hc.BAN_STRING),
                 CONTRACT_DATE_STRING: extracted.get(hc.CONTRACT_DATE_STRING), 
@@ -163,10 +155,9 @@ def main():
                 STATUS_RESOLVED_STRING: "YES",
                 STATUS_FAIL_STRING: "NO"
                 }
-        # print(f"{data=}")
-        move_files(archive_dir_path, list(filenet_temp_path.iterdir()))
-        clear_dir(filenet_temp_path)
-        append_data_to_excel(data, root_folder_path_obj / "../../EXCEL_TEMPLATE/Book1.xlsx")
+            move_files(archive_dir_path, list(filenet_temp_path.iterdir()))
+            clear_dir(filenet_temp_path)
+            append_data_to_excel(data, root_folder_path_obj / "../../EXCEL_TEMPLATE/Book1.xlsx")
     end = time()
     print(f"EXECUTION LASTED: {end - start} sec")
     return
