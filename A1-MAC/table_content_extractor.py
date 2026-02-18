@@ -4,13 +4,19 @@ from pathlib import Path
 from numpy.typing import NDArray
     
 class TableExtractor:
-    def __init__(self, image_path : Path, file_basename):
+    def __init__(self, image_path : Path, file_basename : str, debug : bool = False):
         self.original_image: cv2.typing.MatLike | None = cv2.imread(str(image_path))
         if self.original_image is None:
             raise FileNotFoundError(f"Couldn't read image: {str(image_path)}")
         height, width, channels = self.original_image.shape
         self.original_image = self.original_image[0:int(0.5 * height), 0:width]
         self.file_basename = file_basename
+        self.debug = debug
+    
+    def save_img(self, path : str, content : cv2.typing.MatLike) -> None:
+        if self.debug:
+            self.save_img(path, content)
+        return
 
     def extract_table_with_fixed_perspective(self, save_path : Path) -> cv2.typing.MatLike | None:
         if not save_path.parent.exists() or not save_path.parent.is_dir():
@@ -26,9 +32,9 @@ class TableExtractor:
             return None
         perspective_corrected_image = self.apply_perspective_transform(contour_with_max_area_ordered)
         preprocessed_image = self.preprocess_image(perspective_corrected_image)
-        cv2.imwrite(str(save_path.parent / "perspective.png"), perspective_corrected_image)
-        cv2.imwrite(str(save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
-        cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
+        self.save_img(str(save_path.parent / "perspective.png"), perspective_corrected_image)
+        self.save_img(str(save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
+        self.save_img(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
         return perspective_corrected_image
     
     def clear_table(self, save_path : Path, line_length : int) -> None:
@@ -48,15 +54,15 @@ class TableExtractor:
         if contour_with_max_area_ordered is None:
             print("No rectangle contours found")
             return None
-        cv2.imwrite(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
+        self.save_img(str(save_path.parent / "contour_with_max_area.png"), self.original_image_with_contour_with_max_area)
         top_left, top_right, bottom_right, bottom_left = contour_with_max_area_ordered
         lowest_x, lowest_y = top_left 
         highest_x, highest_y = bottom_right 
         if preprocessed_image is not None:
             self.remove_table_lines(preprocessed_image[int(lowest_y) : int(highest_y), int(lowest_x) : int(highest_x)])
             # self.remove_table_lines(preprocessed_image)
-        cv2.imwrite(str(save_path.parent / "combined_lines.png"), self.combined_lines)
-        cv2.imwrite(str(save_path), self.image_without_lines_noise_removed)
+        self.save_img(str(save_path.parent / "combined_lines.png"), self.combined_lines)
+        cv2.imwrite(str(save_path), self.image_without_lines_noise_removed) #This image has to be saved no matter what
         return
     
     def preprocess_image(self, input_image : cv2.typing.MatLike | None = None, use_gauss : bool = False) -> cv2.typing.MatLike | None:
@@ -104,11 +110,11 @@ class TableExtractor:
         assert self.original_image is not None
         # Find all contours in the image and draw them over original_image
         inverted_image = self.extract_horizontal_and_vertical_lines(inverted_image, use_final_dilate=True)
-        cv2.imwrite(str(self.save_path.parent / "inverted_image.png"), inverted_image)
+        self.save_img(str(self.save_path.parent / "inverted_image.png"), inverted_image)
         contours, hierarchy = cv2.findContours(inverted_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         original_image_with_all_contours = self.original_image.copy()
         cv2.drawContours(original_image_with_all_contours, contours, -1, (0, 255, 0), 3)
-        cv2.imwrite(str(self.save_path.parent / "all_contours.png"), original_image_with_all_contours)
+        self.save_img(str(self.save_path.parent / "all_contours.png"), original_image_with_all_contours)
         # Filter contours and leave only rectangular ones
         rectangular_contours = []
         for contour in contours:
@@ -118,7 +124,7 @@ class TableExtractor:
                 rectangular_contours.append(approx)
         self.original_image_with_only_rectangular_contours = self.original_image.copy()
         cv2.drawContours(self.original_image_with_only_rectangular_contours, rectangular_contours, -1, (0, 255, 0), 3)
-        cv2.imwrite(str(self.save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
+        self.save_img(str(self.save_path.parent / "rectangular_contours.png"), self.original_image_with_only_rectangular_contours)
         # Find largest contour by area (in the list of all rectangular contours)
         max_area = 0
         contour_with_max_area = None
@@ -205,7 +211,7 @@ class TableExtractor:
         all_lines = cv2.add(horizontal_lines, vertical_lines)
         if use_final_dilate:
             all_lines = cv2.dilate(all_lines, cv2.getStructuringElement(cv2.MORPH_RECT, (3,3)), iterations=3)
-        cv2.imwrite(str(self.save_path.parent / "extracted_lines.png"), all_lines)
+        self.save_img(str(self.save_path.parent / "extracted_lines.png"), all_lines)
         return all_lines
     # def extract_horizontal_and_vertical_lines(self, inverted_image: cv2.typing.MatLike) -> cv2.typing.MatLike:
     #     # Extract horizontal lines

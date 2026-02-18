@@ -19,6 +19,7 @@ regs = {'3': [
     ]}
 
 RESIDENT_KEYWORD = "физичко лице"
+DEBUG = False
 
 def map_title_to_doctype(content : str, is_scanned : bool = False) -> hc.DocType:
     title = ""
@@ -223,17 +224,43 @@ def get_checkbox_content(img_path : Path, plot : bool = False) -> dict[str, bool
     is_resident = pair[0][1]
     return {hc.RESIDENT_CUSTOMER_STRING : is_resident, hc.BUSINESS_CUSTOMER_STRING : not is_resident}
 
+
+def rmdir(target_dir : Path) -> None:
+    directory = Path(target_dir)
+    for item in directory.iterdir():
+        if item.is_dir():
+            rmdir(item)
+        else:
+            item.unlink()
+    directory.rmdir()
+    return
+
+def clear_dir(target_dir : Path) -> None:
+    for item in target_dir.iterdir():
+        if item.is_file():
+            item.unlink()
+        elif item.is_dir():
+            rmdir(item)
+    return
+
+
 def get_table_content(img_path : Path, file_basename : str, doc_type : hc.DocType) -> str:
     # img_path = crop_page(page, doc_type, 'table')
     # print(f"{str(img_path)=}")
-    tableExtractor = TableExtractor(img_path, file_basename)
+    tableExtractor = TableExtractor(img_path, file_basename, DEBUG)
     img_save_path = Path(__file__).parent / f"tables/{file_basename}/cleared_table.png"
     line_length = hc.OCR_DOCUMENT_REGEXES.get(doc_type, {}).get(hc.LINE_LENGTH_STRING, 10)
     tableExtractor.clear_table(img_save_path, line_length)
     # result_img_path = tableExtractor.result_path if CONFIG.get(doc_type, {}).get("clear_table") else img_path 
     # doc = raw_img_to_pdf(result_img_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
-    doc = raw_img_to_pdf(img_save_path, Path(__file__).parent / "raw_img_to_pdf" / file_basename, "raw_img.pdf")
-    return extract_content_from_page(doc[0])
+    output_dir = Path(__file__).parent / "raw_img_to_pdf" / file_basename
+    doc = raw_img_to_pdf(img_save_path, output_dir, "raw_img.pdf")
+    table_content = extract_content_from_page(doc[0])
+    doc.close()
+    if not DEBUG:
+        rmdir(output_dir)
+        rmdir(img_save_path.parent)
+    return table_content
 
 def get_ocr_version_of_key_phrase(phrase : str, content : str, clear_strings : bool = False) -> str:
     # print(f"content before: {content}")
@@ -325,7 +352,10 @@ def update_ban_emdb_date(result : dict[str, str], document_content : str, docume
 
 def checkbox_fallback(page : pymupdf.Page, doc_type : hc.DocType) -> dict:
     img_path = extract_img_from_pdf_page(page, f"doc_type_{doc_type}_temp_checkbox.png")
-    return get_checkbox_content(img_path, plot=False)
+    checkbox_content = get_checkbox_content(img_path, plot=False)
+    if not DEBUG:
+        img_path.unlink()
+    return checkbox_content
 
 def update_customer_type(page : pymupdf.Page, result : dict, document_content : str, doc_type : hc.DocType, 
                          document_regexes : dict, img_path : Path = Path(), use_ocr : bool = False) -> None:
@@ -557,6 +587,7 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
         doc = pymupdf.open(file_path)
         result = {}
         name = f"document_{file_no}"
+        img_path = Path()
         rotated_path = Path()
         use_ocr = not is_regular_pdf_page(doc[0])
         page = None
@@ -584,7 +615,8 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
                 # valid_page_no = i
                 valid_pages[i] = doc_type
                 # print(f"PAGE {i + 1} is valid form of type: {doc_type}")
-        
+        if ocr_doc_top:
+            ocr_doc_top.close()
         if not page:
             print("No relevant pages detected for given document")
             return ({}, '')
@@ -608,12 +640,16 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
                 rotated_path = straightenImage(img_path, Path(__file__).parent / f"rotated_imgs/document_{file_no}")
                 # doc_save_path = Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name / "scanned_img.pdf"
                 # print(f"{str(doc_save_path)=}")
-                doc_trimmed = scanned_img_to_pdf([doc[valid_page_no]], Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name, "scanned_img.pdf")
+                trimmed_doc_dir = Path(__file__).parent / "scanned_img_to_pdf" / f"TYPE_{doc_type.value}" / name
+                # print(f"{trimmed_doc_dir=}")
+                doc_trimmed = scanned_img_to_pdf([doc[valid_page_no]], trimmed_doc_dir, "scanned_img.pdf")
                 # doc = scanned_img_to_pdf(list(doc.pages()), Path(__file__).parent / "scanned_img_to_pdf" / name, "scanned_img.pdf")
                 # result = extract_ocr_data(rotated_path, doc, doc_type, name) 
                 # result = extract_ocr_data(img_path, doc, doc_type, name) 
                 # print(f"Extracted data: {extract_content_from_page(doc[valid_page_no])} from page: {valid_page_no}")
                 page = doc_trimmed[0]
+                # if not DEBUG:
+                #     rmdir(trimmed_doc_dir)
             else:
                 # result = extract_data(doc, doc_type)
                 page = doc[valid_page_no]
@@ -621,4 +657,12 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
             extract_document_data(page, doc_type, result, file_basename=name, img_path=rotated_path, use_ocr=use_ocr)
             # print(f"\n{result=}\n")
             current_page_no += 1
+        if not DEBUG:
+            if rotated_path != Path(): 
+                rmdir(rotated_path.parent)
+            if img_path != Path():
+                rmdir(img_path.parent)
+            if doc_trimmed:
+                doc_trimmed.close()
+                clear_dir(Path(__file__).parent / "scanned_img_to_pdf")
     return (result, 'A' if not use_ocr else 'B')

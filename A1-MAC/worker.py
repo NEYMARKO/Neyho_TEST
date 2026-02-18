@@ -4,7 +4,7 @@ from pathlib import Path
 from zipfile import ZipFile
 import hardcoded_config as hc
 from datetime import datetime
-from data_extractor import extract_data, result_complete
+from data_extractor import extract_data, result_complete, clear_dir
 DAY, MONTH, YEAR = (datetime.now().day, datetime.now().month, datetime.now().year)
 
 TICKET_NUMBER_STRING = "Ticket_Number"
@@ -51,24 +51,6 @@ def move_files(output_dir_path : Path, input_files : list[Path]) -> Path:
     for file_path in input_files:
         move_file(output_dir_path, file_path)
     return output_dir_path
-
-def rmdir(target_dir : Path) -> None:
-    directory = Path(target_dir)
-    for item in directory.iterdir():
-        if item.is_dir():
-            rmdir(item)
-        else:
-            item.unlink()
-    directory.rmdir()
-    return
-
-def clear_dir(target_dir : Path) -> None:
-    for item in target_dir.iterdir():
-        if item.is_file():
-            item.unlink()
-        elif item.is_dir():
-            rmdir(item)
-    return
 
 def save_data(file_path : Path, file_no : int, results : list[dict]) -> dict:
     extracted_data, flow = extract_data(file_path, file_no)
