@@ -24,11 +24,17 @@ def map_title_to_doctype(content : str, is_scanned : bool = False) -> hc.DocType
     title = ""
     doc_type = hc.DocType.UNDEFINED
     # print(f"\n{content=}")
-    all_titles = ["Договор за засновање претплатнички однос за користење на јавни електронски комуникациски услуги",
-                      "ДОГОВОР бр. 523670020 А за купопродажба на уреди со одложено плаќање на рати склучен", #added more than just a title to increase odds of it being detected
-                      "ПРИЛОГ 1 кон Договор за користење на јавни комуникациски услуги",
-                      "Формулар за доделена субвенција за бенефицирана набавка на терминална опрема",
-                      "БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК"]
+    all_titles = [
+            "Договор за засновање претплатнички однос за користење на јавни електронски комуникациски услуги",
+            "Договор за купопродажба на уреди со одложено плаќање на рати", #added more than just a title to increase odds of it being detected
+            "ПРИЛОГ 1 кон Договор за користење на јавни комуникациски услуги",
+            "Формулар за доделена субвенција за бенефицирана набавка на терминална опрема",
+            "БАРАЊЕ ЗА ПРЕНЕСУВАЊЕ НА УСЛУГИ ПОМЕЃУ РАЗЛИЧНИ БАН БРОЕВИ КОИ ПРИПАЃААТ НА ИСТ ПРЕТПЛАТНИК",
+            "БАРАЊЕ ЗА ПРОМЕНА НА ПРЕТПЛАТНИК И ПРЕНЕСУВАЊЕ НА КОМУНИКАЦИСКИ УСЛУГИ",
+            "Барање за склучување на претплатнички договор со пренесување на број",
+            "ПОТВРДА ЗА ОСИГУРУВАЊЕ"
+        ]
+    
     max_ratio = 0
     if is_scanned:
         max_ratio = 0
@@ -236,6 +242,7 @@ def get_ocr_version_of_key_phrase(phrase : str, content : str, clear_strings : b
         phrase = phrase.lower()
         content = content.lower()
         content = re.sub(r"[^\w\s]", " ", content)
+        content = re.sub(r"\d{2,}", " ", content)
         # print(f"content after: {content}")
     words = content.split()
     words = [x for x in words if len(x) > 1] #remove junk - not even once will word be consisted of only 1 letter or sign
@@ -571,6 +578,8 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
             # doc_type = map_title_to_doctype(page_content, use_ocr)
             doc_type = map_title_to_doctype(page_top_content, use_ocr)
             if doc_type != hc.DocType.UNDEFINED:
+                if doc_type == hc.DocType.TYPE_8:
+                    return ({}, '')
                 page = doc[i]
                 # valid_page_no = i
                 valid_pages[i] = doc_type

@@ -7,6 +7,9 @@ class DocType(Enum):
     TYPE_3 = 3
     TYPE_4 = 4
     TYPE_5 = 5
+    TYPE_6 = 6
+    TYPE_7 = 7
+    TYPE_8 = 8
     UNDEFINED = -1
 
 BAN_STRING = "BAN"
