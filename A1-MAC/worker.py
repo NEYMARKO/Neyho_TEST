@@ -77,7 +77,7 @@ def save_data(file_path : Path, file_no : int, results : list[dict]) -> dict:
         print(f"UNABLE TO EXTRACT ALL RELEVANT DATA for file: {file_path.name}")
         return {}
     # processed_files.append(x.name)
-    extracted_data['flow'] = flow
+    # extracted_data['flow'] = flow
     ban = extracted_data.get(hc.BAN_STRING)
     file_path = file_path.rename(file_path.parent / f"{ban}.pdf" )
     results.append(extracted_data)
@@ -117,7 +117,7 @@ def append_data_to_excel(data : dict, excel_file_path : Path) -> None:
             new_row = pd.DataFrame([data])
 
             headers = [cell.value.strip() for cell in sheet[1]]
-            print(f"{headers=}")
+            # print(f"{headers=}")
             new_row = new_row.reindex(columns=headers) #reorder data to match corresponding column
 
             new_row.to_excel(
@@ -164,13 +164,12 @@ def main():
             extracted = save_data(x, file_no, results)
             move_files(filenet_temp_path, [x.parent / f"{extracted.get(hc.BAN_STRING)}.pdf"])
             # move_file(output_dir_path, x)
-            print(f"\n{extracted=}\n")
+            print(f"\nresult={extracted}\n")
             file_no += 1
         else:
             continue
         data = {
                 TICKET_NUMBER_STRING: 0,
-                SCENARIO_STRING: extracted.get("flow"), 
                 BAN_STRING: extracted.get(hc.BAN_STRING),
                 CONTRACT_DATE_STRING: extracted.get(hc.CONTRACT_DATE_STRING), 
                 CUSTOMER_TYPE_STRING: "RESIDENT" if extracted.get(hc.RESIDENT_CUSTOMER_STRING) else "BUSINESS",
@@ -182,7 +181,7 @@ def main():
                 STATUS_RESOLVED_STRING: "YES",
                 STATUS_FAIL_STRING: "NO"
                 }
-        print(f"{data=}")
+        # print(f"{data=}")
         move_files(archive_dir_path, list(filenet_temp_path.iterdir()))
         clear_dir(filenet_temp_path)
         append_data_to_excel(data, root_folder_path_obj / "../../EXCEL_TEMPLATE/Book1.xlsx")

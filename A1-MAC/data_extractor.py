@@ -118,12 +118,15 @@ def raw_img_to_pdf(img_src : Path, dest_folder : Path, file_name : str) -> pymup
     doc.save(str(dest_folder / file_name))
     return scanned_img_to_pdf([doc[0]], dest_folder, file_name)
 
-def scanned_img_to_pdf(pages : list[pymupdf.Page], dest_folder : Path, file_name : str) -> pymupdf.Document:
+def scanned_img_to_pdf(pages : list[pymupdf.Page], dest_folder : Path, file_name : str, clip_top : bool = False) -> pymupdf.Document:
     doc = fitz.open()
     # print(f"{len(pages)=}")
+    clip = None
     for page in pages:
-        matrix = pymupdf.Matrix(4, 4)
-        pix = page.get_pixmap(matrix=matrix, alpha=False)
+        if clip_top:
+            clip = pymupdf.Rect(page.rect.x0, page.rect.y0, page.rect.x1, page.rect.y0 + page.rect.height * 0.2) #Don't go lower than 20%
+        matrix = pymupdf.Matrix(4, 4) 
+        pix = page.get_pixmap(matrix=matrix, alpha=False) if not clip_top else page.get_pixmap(matrix=matrix, clip=clip, alpha=False)
         if pix.alpha:
             pix.set_alpha(None)
         ocr_pdf_bytes = pix.pdfocr_tobytes(language="mkd")
@@ -227,18 +230,18 @@ def get_table_content(img_path : Path, file_basename : str, doc_type : hc.DocTyp
     return extract_content_from_page(doc[0])
 
 def get_ocr_version_of_key_phrase(phrase : str, content : str, clear_strings : bool = False) -> str:
-     
+    # print(f"content before: {content}")
     kw_len = len(phrase.split())
     if clear_strings:
         phrase = phrase.lower()
         content = content.lower()
         content = re.sub(r"[^\w\s]", " ", content)
-
+        # print(f"content after: {content}")
     words = content.split()
     words = [x for x in words if len(x) > 1] #remove junk - not even once will word be consisted of only 1 letter or sign
                                             # for example, this is junk:  е 3 е 3 и ти | } ПРИЛОГ (1st real word)
     ngrams = [" ".join(words[i:i+kw_len]) for i in range(len(words) - kw_len + 1)]
-
+    # print(f"{words=}")
     # print(f"{phrase=}")
     # print(f"\n{ngrams=}\n")
     match, score, idx = process.extractOne(phrase, ngrams, scorer=fuzz.token_set_ratio)
@@ -555,17 +558,18 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
             print("Unable to read document!")
             return ({}, '')
         
-        ocr_doc = None
+        ocr_doc_top = None
         if use_ocr:
-            ocr_doc = scanned_img_to_pdf(list(doc.pages()), Path(__file__).parent / "scanned_img_to_pdf" / name, "scanned_img.pdf")
-        
+            # print("STARTING WITH CONVERTING IMGS TO PDF")
+            ocr_doc_top = scanned_img_to_pdf(list(doc.pages()), Path(__file__).parent / "scanned_img_to_pdf" / name, "scanned_img.pdf", clip_top=True)
+            # print("CONVERTED IMGS TO PDF")
         # for p in ocr_doc.pages():
         #     print(f"{extract_content_from_page(p)=}")
         for i in range(doc.page_count):
-            page_content = extract_content_from_page(doc[i] if not ocr_doc else ocr_doc[i])
+            page_top_content = extract_content_from_page(doc[i] if not ocr_doc_top else ocr_doc_top[i])
             # print(f"{page_content=}\n\n\n\n")
             # doc_type = map_title_to_doctype(page_content, use_ocr)
-            doc_type = map_title_to_doctype(page_content[:int(len(page_content) * 0.1)], use_ocr)
+            doc_type = map_title_to_doctype(page_top_content, use_ocr)
             if doc_type != hc.DocType.UNDEFINED:
                 page = doc[i]
                 # valid_page_no = i
@@ -599,6 +603,7 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
                 # doc = scanned_img_to_pdf(list(doc.pages()), Path(__file__).parent / "scanned_img_to_pdf" / name, "scanned_img.pdf")
                 # result = extract_ocr_data(rotated_path, doc, doc_type, name) 
                 # result = extract_ocr_data(img_path, doc, doc_type, name) 
+                # print(f"Extracted data: {extract_content_from_page(doc[valid_page_no])} from page: {valid_page_no}")
                 page = doc_trimmed[0]
             else:
                 # result = extract_data(doc, doc_type)
