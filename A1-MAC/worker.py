@@ -4,7 +4,7 @@ from pathlib import Path
 from zipfile import ZipFile
 import hardcoded_config as hc
 from datetime import datetime
-from data_extractor import extract_data, result_complete, clear_dir
+from data_extractor import extract_data, result_complete, clear_dir, rmdir
 DAY, MONTH, YEAR = (datetime.now().day, datetime.now().month, datetime.now().year)
 
 TICKET_NUMBER_STRING = "Ticket_Number"
@@ -73,9 +73,10 @@ def save_data(file_path : Path, file_no : int, results : list[dict]) -> dict:
     results.append(extracted_data)
     return extracted_data
 
-def rename_all_zip_files(all_file_paths : list[Path], ban : str) -> None:
-    if not ban:
-        raise RuntimeError("UNABLE TO EXTRACT INFO FROM ZIP")
+def rename_files(all_file_paths : list[Path], ban : str) -> None:
+    if len(all_file_paths) == 1:
+        all_file_paths[0].rename(all_file_paths[0].parent / f"{ban}.pdf")
+        return
     for i in range(len(all_file_paths)):
         all_file_paths[i].rename(all_file_paths[i].parent / f"{ban}_{i + 1}.pdf")
     return
@@ -116,32 +117,42 @@ def main():
     start = time()
     for file_path in root_folder_path_obj.iterdir():
         extracted = {}
+        processed_files = []
+        zip_dir_path = Path()
         if file_path.is_file() and file_path.name.endswith("zip"):
             #ALL FILES WILL HAVE THE SAME BAN, IF DATA GOT EXTRACTED FROM SINGLE FILE
             #IT WILL BE APPLIABLE TO ALL THE REST OF THEM - NO NEED TO PROCESS THE REST
             zip_dir_path = file_path.parent / "ZIP_EXTRACTED"
             with ZipFile(file_path, 'r') as zip:
                 zip.extractall(zip_dir_path)
+            processed_files = list(zip_dir_path.iterdir())
             for zip_elem_path in zip_dir_path.iterdir():
                 extracted = save_data(zip_elem_path, file_no, results)
                 if extracted:
                     break
                 file_no += 1
-            if extracted:
-                rename_all_zip_files(list(zip_dir_path.iterdir()), extracted.get(hc.BAN_STRING, ""))
-                move_files(filenet_temp_path, list(zip_dir_path.iterdir()))
-            zip_dir_path.rmdir() #remove folder in which zip files got extracted
-            file_path.unlink() #remove zip file
+            # if extracted:
+            #     rename_files(list(zip_dir_path.iterdir()), extracted.get(hc.BAN_STRING, ""))
+            #     move_files(filenet_temp_path, list(zip_dir_path.iterdir()))
+            # zip_dir_path.rmdir() #remove folder in which zip files got extracted
+            # file_path.unlink() #remove zip file
         elif file_path.is_file() and file_path.name.endswith("pdf"):
             extracted = save_data(file_path, file_no, results)
-            ban = extracted.get(hc.BAN_STRING)
-            if extracted:
-                move_files(filenet_temp_path, [file_path.parent / f"{ban}.pdf" if ban else file_path])
-            print(f"\nresult={extracted}\n")
+            processed_files = [file_path]
+            # ban = extracted.get(hc.BAN_STRING)
+            # if extracted:
+            #     move_files(filenet_temp_path, [file_path.parent / f"{ban}.pdf" if ban else file_path])
+            # print(f"\nresult={extracted}\n")
             file_no += 1
         else:
             continue
         if extracted:
+            print(f"\nresult={extracted}\n")
+            rename_files(processed_files, extracted.get(hc.BAN_STRING, ""))
+            move_files(filenet_temp_path, processed_files)
+            if zip_dir_path != Path():
+                rmdir(zip_dir_path)
+                file_path.unlink()
             data = {
                 TICKET_NUMBER_STRING: 0,
                 BAN_STRING: extracted.get(hc.BAN_STRING),
@@ -155,9 +166,9 @@ def main():
                 STATUS_RESOLVED_STRING: "YES",
                 STATUS_FAIL_STRING: "NO"
                 }
+            append_data_to_excel(data, root_folder_path_obj / "../../EXCEL_TEMPLATE/Book1.xlsx")
             move_files(archive_dir_path, list(filenet_temp_path.iterdir()))
             clear_dir(filenet_temp_path)
-            append_data_to_excel(data, root_folder_path_obj / "../../EXCEL_TEMPLATE/Book1.xlsx")
     end = time()
     print(f"EXECUTION LASTED: {end - start} sec")
     return
