@@ -60,25 +60,16 @@ def move_files(output_dir_path : Path, input_files : list[Path]) -> Path:
         move_file(output_dir_path, file_path)
     return output_dir_path
 
-def save_data(file_path : Path, file_no : int, results : list[dict]) -> dict:
-    extracted_data, flow = extract_data(file_path, file_no)
-    # print(f"{extracted_data=}")
-    if not result_complete(extracted_data):
-        print(f"UNABLE TO EXTRACT ALL RELEVANT DATA for file: {file_path.name}")
-        return {}
-    # processed_files.append(x.name)
-    # extracted_data['flow'] = flow
-    ban = extracted_data.get(hc.BAN_STRING)
-    file_path = file_path.rename(file_path.parent / f"{ban}.pdf") #ban surely exists - result_complete() check comes before this line
-    results.append(extracted_data)
-    return extracted_data
-
 def rename_files(all_file_paths : list[Path], ban : str) -> None:
     if len(all_file_paths) == 1:
-        all_file_paths[0].rename(all_file_paths[0].parent / f"{ban}.pdf")
+        new_path = all_file_paths[0].parent / f"{ban}.pdf"
+        all_file_paths[0].rename(new_path)
+        all_file_paths[0] = new_path
         return
     for i in range(len(all_file_paths)):
-        all_file_paths[i].rename(all_file_paths[i].parent / f"{ban}_{i + 1}.pdf")
+        new_path = all_file_paths[i].parent / f"{ban}_{i + 1}.pdf"
+        all_file_paths[i].rename(new_path)
+        all_file_paths[i] = new_path
     return
 
 def append_data_to_excel(data : dict, excel_file_path : Path) -> None:
@@ -127,25 +118,17 @@ def main():
                 zip.extractall(zip_dir_path)
             processed_files = list(zip_dir_path.iterdir())
             for zip_elem_path in zip_dir_path.iterdir():
-                extracted = save_data(zip_elem_path, file_no, results)
+                extracted = extract_data(zip_elem_path, file_no)
                 if extracted:
                     break
                 file_no += 1
-            # if extracted:
-            #     rename_files(list(zip_dir_path.iterdir()), extracted.get(hc.BAN_STRING, ""))
-            #     move_files(filenet_temp_path, list(zip_dir_path.iterdir()))
-            # zip_dir_path.rmdir() #remove folder in which zip files got extracted
-            # file_path.unlink() #remove zip file
         elif file_path.is_file() and file_path.name.endswith("pdf"):
-            extracted = save_data(file_path, file_no, results)
+            extracted = extract_data(file_path, file_no)
             processed_files = [file_path]
-            # ban = extracted.get(hc.BAN_STRING)
-            # if extracted:
-            #     move_files(filenet_temp_path, [file_path.parent / f"{ban}.pdf" if ban else file_path])
-            # print(f"\nresult={extracted}\n")
             file_no += 1
         else:
             continue
+
         if extracted:
             print(f"\nresult={extracted}\n")
             rename_files(processed_files, extracted.get(hc.BAN_STRING, ""))

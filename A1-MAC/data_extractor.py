@@ -578,7 +578,7 @@ def result_complete(result : dict) -> bool:
         return True 
     return False
 
-def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
+def extract_data(file_path : Path, file_no : int) -> dict:
     result = {}
     use_ocr = False
     valid_pages = {}
@@ -596,7 +596,7 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
 
         if not doc:
             print("Unable to read document!")
-            return ({}, '')
+            return {}
         
         ocr_doc_top = None
         if use_ocr:
@@ -612,7 +612,7 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
             doc_type = map_title_to_doctype(page_top_content, use_ocr)
             if doc_type != hc.DocType.UNDEFINED:
                 if doc_type == hc.DocType.TYPE_8:
-                    return ({}, '')
+                    return {}
                 page = doc[i]
                 # valid_page_no = i
                 valid_pages[i] = doc_type
@@ -621,7 +621,7 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
             ocr_doc_top.close()
         if not page:
             print("No relevant pages detected for given document")
-            return ({}, '')
+            return {}
         
         doc_trimmed = None
         current_page_no = 0
@@ -667,4 +667,4 @@ def extract_data(file_path : Path, file_no : int) -> tuple[dict, str]:
             if doc_trimmed:
                 doc_trimmed.close()
                 clear_dir(Path(__file__).parent / "scanned_img_to_pdf")
-    return (result, 'A' if not use_ocr else 'B')
+    return result if result_complete(result) else {}
