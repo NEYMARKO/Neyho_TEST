@@ -47,12 +47,12 @@ OCR_DOCUMENT_REGEXES = {
             {
                 PRECEDING_STRING: "",
                 UNCHANGED_STRING: 
-                    r"\s(\d{13}|\d{7})"
+                    r"\s(\d{13})"
             },
             {
                 PRECEDING_STRING: r"ЕДБ:",
                 UNCHANGED_STRING: 
-                    r"\s(\d{13}|\d{7})"
+                    r"\s(\d{13})"
             },
         ],
         LINE_LENGTH_STRING: 15
@@ -71,7 +71,7 @@ OCR_DOCUMENT_REGEXES = {
         EMBG_EDB_STRING: {
             PRECEDING_STRING: r"Адреса: ЕМБГ:",
             UNCHANGED_STRING: 
-                r"\s(\d{13}|\d{7})",
+                r"\s(\d{13})",
         },
         RESIDENT_CUSTOMER_STRING : "физичко лице",
         BUSINESS_CUSTOMER_STRING : "правно лице" 
@@ -89,12 +89,12 @@ OCR_DOCUMENT_REGEXES = {
             {
                 PRECEDING_STRING: "",
                 UNCHANGED_STRING: 
-                    r"\s(\d{13}|\d{7})"
+                    r"\s(\d{13})"
             },
             {
                 PRECEDING_STRING: r"ЕДБ:",
                 UNCHANGED_STRING: 
-                    r"\s(\d{13}|\d{7})"
+                    r"\s(\d{13})"
             },
         ],
         LINE_LENGTH_STRING: 5
@@ -111,8 +111,8 @@ OCR_DOCUMENT_REGEXES = {
             "(?<=Назив на фирмата\\:).*?(?=ЕМБГ\\:)"
         ],
         EMBG_EDB_STRING: [
-            "ЕМБГ\\:\\s(\\d{13}|\\d{7})",
-            "ЕМБС\\:\\s(\\d{13}|\\d{7})",
+            "ЕМБГ\\:\\s(\\d{13})",
+            "ЕМБС\\:\\s(\\d{13})",
         ]
     },
     DocType.TYPE_5: 
@@ -122,7 +122,7 @@ OCR_DOCUMENT_REGEXES = {
         CUSTOMER_TYPE_STRING: "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
         EMBG_EDB_STRING: {
             PRECEDING_STRING: "ЕМБГ:",
-            UNCHANGED_STRING: "\\s(\\d{13}|\\d{7})"
+            UNCHANGED_STRING: "\\s(\\d{13})"
         }
     }
 }
@@ -133,9 +133,9 @@ DOCUMENT_REGEXES = {
         CONTRACT_DATE_STRING: DATE_REGEXES,
         CUSTOMER_TYPE_STRING: "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
         EMBG_EDB_STRING: [
-            r"ЕМБГ:\s(\d{13}|\d{7})",
-            r"(?:ЕДБ:.*?){2}\s*(\d{13}|\d{7})",
-            r"ЕДБ:\s(\d{13}|\d{7})"
+            r"ЕМБГ:\s(\d{13})",
+            r"(?:ЕДБ:.*?){2}\s*(\d{13})",
+            r"ЕДБ:\s(\d{13})"
         ]
     },
     DocType.TYPE_2: 
@@ -143,7 +143,7 @@ DOCUMENT_REGEXES = {
         BAN_STRING: r"ДОГОВОР бр.\s(\d{9})",
         CONTRACT_DATE_STRING: DATE_REGEXES,
         CUSTOMER_TYPE_STRING: r"КОРИСНИК [^\s]+\s([^\s]+\s[^\s]+)",
-        EMBG_EDB_STRING: "ЕМБГ\\:\\s(\\d{13}|\\d{7})"
+        EMBG_EDB_STRING: "ЕМБГ\\:\\s(\\d{13})"
     },
     DocType.TYPE_3: 
     {
@@ -151,8 +151,8 @@ DOCUMENT_REGEXES = {
         CONTRACT_DATE_STRING: DATE_REGEXES,
         CUSTOMER_TYPE_STRING: "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
         EMBG_EDB_STRING: [
-            r"ЕМБГ:\s(\d{13}|\d{7})",
-            r"(?:ЕДБ:.*?){2}\s*(\d{13}|\d{7})"
+            r"ЕМБГ:\s(\d{13})",
+            r"(?:ЕДБ:.*?){2}\s*(\d{13})"
         ]
     },
     DocType.TYPE_4: 
@@ -164,8 +164,8 @@ DOCUMENT_REGEXES = {
             "(?<=Назив на фирмата\\:).*?(?=ЕМБГ\\:)"
         ],
         EMBG_EDB_STRING: [
-            "ЕМБГ\\:\\s(\\d{13}|\\d{7})",
-            "ЕМБС\\:\\s(\\d{13}|\\d{7})",
+            "ЕМБГ\\:\\s(\\d{13})",
+            "ЕМБС\\:\\s(\\d{13})",
         ]
     },
     DocType.TYPE_5: 
@@ -173,7 +173,7 @@ DOCUMENT_REGEXES = {
         BAN_STRING: "BAN (\\d{9})",
         CONTRACT_DATE_STRING: DATE_REGEXES,
         CUSTOMER_TYPE_STRING: "(?<=ПРЕТПЛАТНИК).*?(?=Име и презиме)",
-        EMBG_EDB_STRING: "ЕМБГ\\:\\s(\\d{13}|\\d{7})"
+        EMBG_EDB_STRING: "ЕМБГ\\:\\s(\\d{13})"
     }
 }
 
